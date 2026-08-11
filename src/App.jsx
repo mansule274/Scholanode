@@ -1,32 +1,25 @@
-import { useState } from 'react';
 import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import WelcomeCard from './components/WelcomeCard';
-import SchoolSearch from './components/SchoolSearch';
-import SchoolList from './components/SchoolList';
-import FeaturesBar from './components/FeaturesBar';
-import Footer from './components/Footer';
-import SchoolLoginPage from './components/SchoolLoginPage';
+import HomePage from './pages/landing-page/HomePage';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import SchoolLoginPage from './pages/School-login-page/SchoolLoginPage';
+import { ToastContainer } from 'react-toastify';
+import FeaturesBar from './pages/landing-page/FeaturesBar';
+
 
 export default function App() {
-  const [showLoginPage, setShowLoginPage] = useState(false);
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <Navbar />
 
-      {showLoginPage ? (
-        <SchoolLoginPage onBack={() => setShowLoginPage(false)} />
-      ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-          <Hero onLoginClick={() => setShowLoginPage(true)} />
-          <WelcomeCard />
-          <SchoolSearch />
-          <SchoolList />
-          <FeaturesBar />
-          <Footer />
-        </main>
-      )}
+      <BrowserRouter>
+        <Routes>
+          <Route path='/' element={<HomePage />} />
+           <Route path='/school-login' element={<SchoolLoginPage />} />
+           <Route path='/test' element={<FeaturesBar />} />
+        </Routes>
+      </BrowserRouter>
 
+      <ToastContainer position="top-right" autoClose={5000} style={{ zIndex: 9999 }} />
     </div>
   );
 }

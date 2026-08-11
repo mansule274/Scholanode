@@ -1,5 +1,5 @@
 import { ShieldCheck, Rocket, CheckCircle2 } from 'lucide-react';
-import StudentPic from '../assets/student.png';
+import StudentPic from '../../assets/student.png';
 
 export default function Hero({ onLoginClick }) {
   return (
