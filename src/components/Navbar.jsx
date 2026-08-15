@@ -1,5 +1,6 @@
 import { Menu, X, GraduationCap } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -40,9 +41,9 @@ export default function Navbar() {
             <button className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-[#071A52] hover:text-[#071A52] transition-all cursor-pointer">
               Help Center
             </button>
-            <button className="px-5 py-2 rounded-xl bg-[#071A52] text-white hover:bg-[#0A2463] shadow-lg shadow-[#071A52]/25 transition-all cursor-pointer">
+            <Link to="/get-started" className="px-5 py-2 rounded-xl bg-[#071A52] text-white hover:bg-[#0A2463] shadow-lg shadow-[#071A52]/25 transition-all cursor-pointer">
               Get Started
-            </button>
+            </Link>
           </div>
 
           {/* Mobile Toggle */}
