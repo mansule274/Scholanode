@@ -1,7 +1,8 @@
 import { ShieldCheck, Rocket, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import StudentPic from '../../assets/student.png';
 
-export default function Hero({ onLoginClick }) {
+export default function Hero() {
   return (
     <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] text-white shadow-2xl">
       {/* Decorative background */}
@@ -49,20 +50,14 @@ export default function Hero({ onLoginClick }) {
           </div>
 
           {/* CTA */}
-          <div className="flex flex-col sm:flex-row gap-4 pt-4">
-            <button className="px-6 py-3 rounded-2xl border border-white/30 text-white hover:bg-white/10 transition-all cursor-pointer">
+          <div className="flex flex-col gap-4 pt-4 sm:flex-row">
+            <Link to="/watch-demo" className="inline-flex items-center justify-center rounded-2xl border border-white/30 px-6 py-3 text-white transition-all hover:bg-white/10">
               Watch Demo
-            </button>
-            <button className="px-6 py-3 rounded-2xl bg-white text-[#071A52] font-semibold hover:bg-slate-100 transition-all shadow-lg cursor-pointer">
+            </Link>
+            <Link to="/get-started" className="inline-flex items-center justify-center rounded-2xl bg-white px-6 py-3 font-semibold text-[#071A52] shadow-lg transition-all hover:bg-slate-100">
               Start Free Trial
-            </button>
-            <button
-              type="button"
-              onClick={onLoginClick}
-              className="px-6 py-3 rounded-2xl bg-[#0EA5E9] text-white font-semibold hover:bg-[#0284c7] transition-all shadow-lg cursor-pointer"
-            >
-              School Login
-            </button>
+            </Link>
+          
           </div>
         </div>
 

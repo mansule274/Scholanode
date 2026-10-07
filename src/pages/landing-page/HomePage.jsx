@@ -3,7 +3,6 @@
 import FeaturesBar from "./FeaturesBar";
 import Footer from "../../components/Footer";
 import Hero from "./Hero";
-import SchoolList from "./SchoolList";
 import SchoolSearch from "./SchoolSearch";
 import WelcomeCard from "./WelcomeCard";
 
@@ -14,7 +13,6 @@ const HomePage = () => {
            <Hero />
           <WelcomeCard />
           <SchoolSearch />
-          <SchoolList />
           <FeaturesBar />
           <Footer />
  </main>
