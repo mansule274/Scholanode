@@ -1,13 +1,14 @@
 import { UserRound } from 'lucide-react';
+import { ROLE_LABELS, ROLES } from '../../utils/roles';
 import { InfoBox, InputField, PasswordField, SectionHeader, SelectField } from './formComponents';
 
 export default function AdministratorStep({ formData, updateField, showPassword, setShowPassword, showConfirmPassword, setShowConfirmPassword }) {
   const roleOptions = [
-    { value: 'LEADER', label: formData.schoolLevel === 'SECONDARY' ? 'Principal' : 'Head Teacher' },
-    { value: 'VICE_LEADER', label: formData.schoolLevel === 'SECONDARY' ? 'Vice Principal' : 'Vice Leader' },
-    { value: 'ADMINISTRATOR', label: 'Administrator' },
-    { value: 'EXAM_OFFICER', label: 'Exam Officer' },
-    { value: 'STAFF', label: 'Staff' },
+    { value: ROLES.LEADER, label: ROLE_LABELS[ROLES.LEADER] },
+    { value: ROLES.VICE_LEADER, label: ROLE_LABELS[ROLES.VICE_LEADER] },
+    { value: ROLES.ADMINISTRATOR, label: ROLE_LABELS[ROLES.ADMINISTRATOR] },
+    { value: ROLES.EXAM_OFFICER, label: ROLE_LABELS[ROLES.EXAM_OFFICER] },
+    { value: ROLES.STAFF, label: ROLE_LABELS[ROLES.STAFF] },
   ];
 
   return (

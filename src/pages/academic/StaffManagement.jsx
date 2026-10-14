@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   Building2,
   CheckCircle2,
@@ -8,6 +9,7 @@ import {
   Eye,
   FileSpreadsheet,
   KeyRound,
+  Loader2,
   Mail,
   MoreVertical,
   Phone,
@@ -20,94 +22,20 @@ import {
   X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
-const storageKey = 'scholanode-staff';
-
-const starterStaff = [
-  {
-    id: '1',
-    firstName: 'Aisha',
-    lastName: 'Ibrahim',
-    email: 'aisha.ibrahim@school.com',
-    phone: '08031234567',
-    gender: 'FEMALE',
-    role: 'TEACHER',
-    status: 'ACTIVE',
-    loginId: 'SCHSTF0001',
-    dateJoined: '2026-09-05',
-  },
-  {
-    id: '2',
-    firstName: 'Abdulrahman',
-    lastName: 'Musa',
-    email: 'abdulrahman.musa@school.com',
-    phone: '08039876543',
-    gender: 'MALE',
-    role: 'TEACHER',
-    status: 'ACTIVE',
-    loginId: 'SCHSTF0002',
-    dateJoined: '2026-09-06',
-  },
-  {
-    id: '3',
-    firstName: 'Fatima',
-    lastName: 'Yusuf',
-    email: 'fatima.yusuf@school.com',
-    phone: '08034567890',
-    gender: 'FEMALE',
-    role: 'ADMINISTRATOR',
-    status: 'ACTIVE',
-    loginId: 'SCHSTF0003',
-    dateJoined: '2026-09-01',
-  },
-  {
-    id: '4',
-    firstName: 'Sani',
-    lastName: 'Bello',
-    email: 'sani.bello@school.com',
-    phone: '08037654321',
-    gender: 'MALE',
-    role: 'EXAM_OFFICER',
-    status: 'ACTIVE',
-    loginId: 'SCHSTF0004',
-    dateJoined: '2026-09-07',
-  },
-  {
-    id: '5',
-    firstName: 'Maryam',
-    lastName: 'Umar',
-    email: 'maryam.umar@school.com',
-    phone: '08033445566',
-    gender: 'FEMALE',
-    role: 'TEACHER',
-    status: 'INACTIVE',
-    loginId: 'SCHSTF0005',
-    dateJoined: '2026-08-28',
-  },
-  {
-    id: '6',
-    firstName: 'Ibrahim',
-    lastName: 'Abdullahi',
-    email: 'ibrahim.abdullahi@school.com',
-    phone: '08032221100',
-    gender: 'MALE',
-    role: 'VICE',
-    status: 'ACTIVE',
-    loginId: 'SCHSTF0006',
-    dateJoined: '2026-08-20',
-  },
-];
+import { activateStaff, deactivateStaff, getLeaderStatus, getStaff, importStaffCsv, inviteStaff, resetStaffPassword, updateStaff } from './staffApi';
+import { ROLES } from '../../utils/roles';
 
 const roles = [
-  'TEACHER',
-  'ADMINISTRATOR',
-  'EXAM_OFFICER',
-  'VICE',
+  ROLES.STAFF,
+  ROLES.LEADER,
+  ROLES.VICE_LEADER,
+  ROLES.ADMINISTRATOR,
+  ROLES.EXAM_OFFICER,
 ];
 
 const blankForm = {
   email: '',
-  role: 'TEACHER',
+  role: ROLES.STAFF,
 };
 
 const permissions = {
@@ -121,7 +49,18 @@ const permissions = {
 };
 
 export default function StaffManagement() {
-  const [staff, setStaff] = useState(() => loadStaff());
+  const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [modalError, setModalError] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [statusActionId, setStatusActionId] = useState('');
+  const [staffToDeactivate, setStaffToDeactivate] = useState(null);
+  const [deactivationError, setDeactivationError] = useState('');
+  const [hasLeader, setHasLeader] = useState(null);
+  const [leaderStatusError, setLeaderStatusError] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -130,6 +69,9 @@ export default function StaffManagement() {
   const [form, setForm] = useState(blankForm);
   const [copied, setCopied] = useState(null);
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvError, setCsvError] = useState('');
+  const [csvResult, setCsvResult] = useState(null);
 
   const csvInputRef = useRef(null);
 
@@ -138,9 +80,39 @@ export default function StaffManagement() {
   const currentUserRole = 'ADMIN';
   const access = permissions[currentUserRole];
 
+  const loadStaff = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const response = await getStaff();
+      setStaff(normalizeStaff(response));
+      return true;
+    } catch (requestError) {
+      setLoadError(requestError?.response?.data?.message || 'Unable to load school staff.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(staff));
-  }, [staff]);
+    const request = window.setTimeout(loadStaff, 0);
+    return () => window.clearTimeout(request);
+  }, [loadStaff]);
+
+  useEffect(() => {
+    let active = true;
+    getLeaderStatus()
+      .then((response) => {
+        if (active) setHasLeader(response?.hasLeader === true);
+      })
+      .catch((requestError) => {
+        if (active) setLeaderStatusError(requestError?.response?.data?.message || 'Unable to check the school leader status.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredStaff = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -170,22 +142,27 @@ export default function StaffManagement() {
     (member) => member.status === 'INACTIVE'
   ).length;
 
-  const teacherCount = staff.filter(
-    (member) => member.role === 'TEACHER'
+  const staffRoleCount = staff.filter(
+    (member) => member.role === ROLES.STAFF
   ).length;
 
-  const openCreate = () => {
-    setForm(blankForm);
+  const openCreate = (role = ROLES.STAFF) => {
+    setActionError('');
+    setActionMessage('');
+    setModalError('');
+    setModalMessage('');
+    setForm({ ...blankForm, role });
     setModal({ type: 'create' });
   };
 
   const openEdit = (member) => {
+    setModalError('');
+    setModalMessage('');
     setForm({
       firstName: member.firstName,
       lastName: member.lastName,
       email: member.email,
       phone: member.phone || '',
-      gender: member.gender || '',
       role: member.role,
     });
 
@@ -206,7 +183,7 @@ export default function StaffManagement() {
     setMenu(null);
   };
 
-  const saveStaff = (event) => {
+  const saveStaff = async (event) => {
     event.preventDefault();
 
     if (modal.type === 'edit') {
@@ -214,70 +191,148 @@ export default function StaffManagement() {
       const lastName = form.lastName.trim();
 
       if (!firstName || !lastName || !form.email.trim() || !form.role) {
+        setModalError('Complete all required staff details before saving.');
         return;
       }
 
-      setStaff((current) =>
-        current.map((member) =>
-          member.id === modal.member.id
-            ? {
-                ...member,
-                ...form,
-                firstName,
-                lastName,
-                email: form.email.trim(),
-                phone: form.phone?.trim() || '',
-              }
-            : member
-        )
-      );
+      if (!modal.member.id) {
+        setModalError('This staff record is missing its ID, so it cannot be updated.');
+        return;
+      }
+
+      setStatusActionId(modal.member.id);
+      setModalError('');
+      setModalMessage('');
+      try {
+        const response = await updateStaff(modal.member.id, {
+          firstName,
+          surName: lastName,
+          email: form.email.trim(),
+          phoneNumber: form.phone?.trim() || '',
+          role: form.role,
+        });
+        setModal(null);
+        const refreshed = await loadStaff();
+        const message = response?.message || 'Staff details updated successfully.';
+        if (refreshed) setActionMessage(message);
+        else setActionError(`${message} The staff list could not be refreshed; retry loading it.`);
+      } catch (requestError) {
+        setModalError(requestError?.response?.data?.message || 'Unable to update staff details.');
+      } finally {
+        setStatusActionId('');
+      }
+      return;
     } else {
-      if (!form.email.trim() || !form.role) return;
+      const email = form.email.trim();
+      if (!email || !form.role) {
+        setModalError('Enter an email address and select a role before sending the invitation.');
+        return;
+      }
 
-      const nextNumber = getNextStaffNumber(staff);
+      setStatusActionId('invitation');
+      setModalError('');
+      setModalMessage('');
+      try {
+        const response = await inviteStaff({ email, role: form.role });
+        const refreshed = await loadStaff();
 
-      const newStaff = {
-        id: crypto.randomUUID(),
-        ...form,
-        firstName: 'Invited',
-        lastName: 'Staff',
-        email: form.email.trim(),
-        loginId: `SCHSTF${String(nextNumber).padStart(4, '0')}`,
-        status: 'ACTIVE',
-        dateJoined: new Date().toISOString().slice(0, 10),
-      };
+        if (form.role === ROLES.LEADER) {
+          try {
+            const leaderResponse = await getLeaderStatus();
+            setHasLeader(leaderResponse?.hasLeader === true);
+            setLeaderStatusError('');
+          } catch (requestError) {
+            setLeaderStatusError(requestError?.response?.data?.message || 'Unable to refresh the school leader status.');
+          }
+        }
 
-      setStaff((current) => [newStaff, ...current]);
+        setModal(null);
+        const message = response?.message || `${formatRole(form.role)} invitation sent successfully.`;
+        if (refreshed) setActionMessage(message);
+        else setActionError(`${message} The staff list could not be refreshed; retry loading it.`);
+      } catch (requestError) {
+        setModalError(requestError?.response?.data?.message || 'Unable to send the staff invitation.');
+      } finally {
+        setStatusActionId('');
+      }
+      return;
     }
-
-    setModal(null);
   };
 
   const toggleStatus = (member) => {
-    setStaff((current) =>
-      current.map((item) =>
-        item.id === member.id
-          ? {
-              ...item,
-              status:
-                item.status === 'ACTIVE'
-                  ? 'INACTIVE'
-                  : 'ACTIVE',
-            }
-          : item
-      )
-    );
-
     setMenu(null);
+    setActionError('');
+    setActionMessage('');
+    if (!member.id) {
+      setActionError('This staff record is missing its ID, so its status cannot be changed.');
+      return;
+    }
+    if (member.status === 'ACTIVE') {
+      setStaffToDeactivate(member);
+      setDeactivationError('');
+      return;
+    }
+    changeStaffStatus(member, true);
+  };
+
+  const changeStaffStatus = async (member, activate) => {
+    setStatusActionId(member.id);
+    setActionError('');
+    setActionMessage('');
+    setDeactivationError('');
+    try {
+      const response = activate
+        ? await activateStaff(member.id)
+        : await deactivateStaff(member.id);
+      setStaffToDeactivate(null);
+      const refreshed = await loadStaff();
+      const message = response?.message || `Staff account ${activate ? 'reactivated' : 'deactivated'} successfully.`;
+      if (refreshed) {
+        setActionMessage(message);
+      } else {
+        setActionError(`${message} The staff list could not be refreshed; retry loading it.`);
+      }
+    } catch (requestError) {
+      const message = requestError?.response?.data?.message || `Unable to ${activate ? 'reactivate' : 'deactivate'} this staff account.`;
+      if (activate) setActionError(message);
+      else setDeactivationError(message);
+    } finally {
+      setStatusActionId('');
+    }
+  };
+
+  const confirmDeactivateStaff = () => {
+    if (staffToDeactivate) changeStaffStatus(staffToDeactivate, false);
   };
 
   const resetPassword = (member) => {
+    setModalError('');
+    setModalMessage('');
     setModal({
       type: 'reset-password',
       member,
     });
 
     setMenu(null);
+  };
+
+  const handleResetPassword = async () => {
+    if (!modal?.member?.id) {
+      setModalError('This staff record is missing its ID, so its password cannot be reset.');
+      return;
+    }
+
+    setStatusActionId(modal.member.id);
+    setModalError('');
+    setModalMessage('');
+    try {
+      const response = await resetStaffPassword(modal.member.id);
+      setModalMessage(response?.message || "A temporary password has been sent to the staff member's registered email.");
+    } catch (requestError) {
+      setModalError(requestError?.response?.data?.message || 'Unable to reset this staff member’s password. Please try again.');
+    } finally {
+      setStatusActionId('');
+    }
   };
 
   const copyLoginId = async (loginId) => {
@@ -294,22 +349,55 @@ export default function StaffManagement() {
     }
   };
 
-  const handleCsvSelect = (event) => {
+  const handleCsvSelect = async (event) => {
     const file = event.target.files?.[0];
-
+    event.target.value = '';
     if (!file) return;
 
-    console.log('Staff CSV selected:', file);
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'csv' && extension !== 'xlsx') {
+      setCsvError('Choose a .csv or .xlsx file to import staff.');
+      setCsvResult(null);
+      setShowCsvModal(true);
+      return;
+    }
 
-    // Backend CSV processing will be connected here later.
-    // For now, the selected file is only logged.
-    event.target.value = '';
+    setCsvError('');
+    setCsvResult(null);
+    setCsvLoading(true);
+    setShowCsvModal(true);
+    try {
+      const records = await parseStaffImportFile(file, extension);
+      const validation = validateStaffImportRecords(records);
+      if (validation.errors.length) {
+        throw new Error(formatStaffImportErrors(validation.errors));
+      }
+
+      const response = await importStaffCsv({ staff: validation.staff });
+      setCsvResult(response);
+      const refreshed = await loadStaff();
+      if (!refreshed) {
+        setCsvError('Staff were imported successfully, but the staff directory could not be refreshed. Reload the page to see the latest data.');
+      }
+    } catch (requestError) {
+      setCsvError(
+        requestError?.response?.data?.message ||
+          (requestError?.code === 'ECONNABORTED' || requestError?.code === 'ETIMEDOUT'
+            ? 'The staff import took longer than expected and timed out. Check the staff directory before retrying, as the server may have completed the import.'
+            : null) ||
+          requestError?.message ||
+          'Unable to import staff. Check the file and try again.',
+      );
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const downloadCsvTemplate = () => {
     const csv =
-      'firstName,lastName,email,phone,gender,role\n' +
-      ',,,,,\n';
+      'firstName,surName,email,role\n' +
+      'Sample,Staff One,staff.one@example.com,STAFF\n' +
+      'Sample,Staff Two,staff.two@example.com,ADMINISTRATOR\n';
 
     const blob = new Blob([csv], {
       type: 'text/csv;charset=utf-8;',
@@ -325,7 +413,9 @@ export default function StaffManagement() {
     link.click();
     link.remove();
 
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
   };
 
   return (
@@ -380,17 +470,21 @@ export default function StaffManagement() {
 
                 <button
                   type="button"
-                  onClick={() => setShowCsvModal(true)}
+                  onClick={() => {
+                    setCsvError('');
+                    setCsvResult(null);
+                    setShowCsvModal(true);
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/15"
                 >
                   <FileSpreadsheet size={18} />
-                  Import CSV
+                  Import CSV / Excel
                 </button>
 
                 <input
                   ref={csvInputRef}
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={handleCsvSelect}
                   className="sr-only"
                 />
@@ -398,6 +492,34 @@ export default function StaffManagement() {
             )}
           </div>
         </section>
+
+        {leaderStatusError && (
+          <div role="alert" className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            {leaderStatusError}
+          </div>
+        )}
+
+        {hasLeader === false && (
+          <section className="mt-5 overflow-hidden rounded-3xl border border-cyan-200 bg-linear-to-r from-cyan-50 via-white to-sky-50 p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800"><UserCheck size={23} /></span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">Recommended next step</p>
+                  <h2 className="mt-1 text-lg font-extrabold text-[#071A52]">Invite a leader to lead your school</h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Your school does not have a leader account yet. Invite a leader now, or continue setting up your staff directory.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => openCreate(ROLES.LEADER)}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463]"
+              >
+                <Mail size={17} /> Invite a leader
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* =====================================================
             DIRECTORY INTRO
@@ -440,8 +562,8 @@ export default function StaffManagement() {
 
           <SummaryCard
             icon={UserRound}
-            label="Teachers"
-            value={teacherCount}
+            label="Staff"
+            value={staffRoleCount}
           />
 
           <SummaryCard
@@ -450,6 +572,14 @@ export default function StaffManagement() {
             value={inactiveCount}
           />
         </div>
+
+        {(loadError || actionError || actionMessage) && (
+          <div className={`mt-5 flex items-center justify-between gap-4 rounded-2xl border p-4 text-sm ${loadError || actionError ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`} role={loadError || actionError ? 'alert' : 'status'}>
+            <span>{loadError || actionError || actionMessage}</span>
+            {loadError && <button type="button" onClick={loadStaff} disabled={loading} className="shrink-0 font-bold underline disabled:opacity-50">{loading ? 'Loading…' : 'Retry'}</button>}
+            {!loadError && <button type="button" aria-label="Dismiss message" onClick={() => { setActionError(''); setActionMessage(''); }} className="shrink-0 rounded-lg p-1 hover:bg-black/5"><X size={16} /></button>}
+          </div>
+        )}
 
         {/* =====================================================
             DIRECTORY CONTROLS
@@ -504,6 +634,7 @@ export default function StaffManagement() {
                 <option value="ALL">All status</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
+                <option value="SUSPENDED">Suspended</option>
               </select>
             </div>
           </div>
@@ -513,6 +644,12 @@ export default function StaffManagement() {
             DESKTOP TABLE
         ====================================================== */}
 
+        {loading ? (
+          <div className="mt-5 flex items-center justify-center gap-3 rounded-3xl border border-slate-200 bg-white p-10 text-sm font-semibold text-slate-500">
+            <Loader2 size={20} className="animate-spin text-cyan-600" /> Loading school staff…
+          </div>
+        ) : loadError ? null : (
+          <>
         <section className="mt-5 hidden overflow-visible rounded-3xl border border-slate-200 bg-white shadow-sm md:block">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px]">
@@ -607,6 +744,8 @@ export default function StaffManagement() {
             onCreate={openCreate}
           />
         )}
+          </>
+        )}
       </div>
 
       {/* =====================================================
@@ -618,8 +757,14 @@ export default function StaffManagement() {
           modal={modal}
           form={form}
           setForm={setForm}
-          onClose={() => setModal(null)}
+          saving={modal.type === 'create'
+            ? statusActionId === 'invitation'
+            : statusActionId === modal.member?.id}
+          error={modalError}
+          message={modalMessage}
+          onClose={() => { if (!statusActionId) setModal(null); }}
           onSave={saveStaff}
+          onResetPassword={handleResetPassword}
         />
       )}
 
@@ -629,12 +774,22 @@ export default function StaffManagement() {
 
       {showCsvModal && (
         <CsvImportModal
-          onClose={() => setShowCsvModal(false)}
+          onClose={() => { if (!csvLoading) setShowCsvModal(false); }}
           onDownloadTemplate={downloadCsvTemplate}
-          onChooseFile={() => {
-            setShowCsvModal(false);
-            csvInputRef.current?.click();
-          }}
+          onChooseFile={() => csvInputRef.current?.click()}
+          loading={csvLoading}
+          error={csvError}
+          result={csvResult}
+        />
+      )}
+
+      {staffToDeactivate && (
+        <DeactivateStaffModal
+          member={staffToDeactivate}
+          saving={statusActionId === staffToDeactivate.id}
+          error={deactivationError}
+          onCancel={() => { if (!statusActionId) setStaffToDeactivate(null); }}
+          onConfirm={confirmDeactivateStaff}
         />
       )}
     </main>
@@ -846,7 +1001,7 @@ function ActionMenu({
         View staff
       </button>
 
-      {canEdit && (
+      {canEdit && member.role !== ROLES.LEADER && (
         <button
           type="button"
           onClick={onEdit}
@@ -901,8 +1056,12 @@ function StaffModal({
   modal,
   form,
   setForm,
+  saving,
+  error,
+  message,
   onClose,
   onSave,
+  onResetPassword,
 }) {
   const isView = modal.type === 'view';
   const isReset = modal.type === 'reset-password';
@@ -921,9 +1080,11 @@ function StaffModal({
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            This is a local simulation for now. In the real system,
-            the staff member will receive a secure password-reset flow.
+            A temporary password will be sent to the staff member&apos;s registered email. They will need to change it after signing in.
           </p>
+
+          {error && <p role="alert" className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left text-sm leading-5 text-rose-700">{error}</p>}
+          {message && <p role="status" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left text-sm leading-5 text-emerald-700">{message}</p>}
 
           <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-left">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -943,18 +1104,21 @@ function StaffModal({
             <button
               type="button"
               onClick={onClose}
+              disabled={saving}
               className={secondaryButton}
             >
-              Cancel
+              {message ? 'Close' : 'Cancel'}
             </button>
 
-            <button
+            {!message && <button
               type="button"
-              onClick={onClose}
-              className="rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white hover:bg-[#0A2463]"
+              onClick={onResetPassword}
+              disabled={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Confirm reset
-            </button>
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+              {saving ? 'Sending temporary password…' : 'Reset password'}
+            </button>}
           </div>
         </div>
       </ModalShell>
@@ -1012,12 +1176,6 @@ function StaffModal({
           />
 
           <DetailItem
-            icon={UserRound}
-            label="Gender"
-            value={formatGender(member.gender)}
-          />
-
-          <DetailItem
             icon={Users}
             label="Role"
             value={formatRole(member.role)}
@@ -1053,7 +1211,7 @@ function StaffModal({
         <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">
           {modal.type === 'edit'
             ? 'Edit staff member'
-            : 'Invite staff'}
+            : form.role === ROLES.LEADER ? 'Invite leader' : 'Invite staff'}
         </h2>
 
         <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -1064,6 +1222,7 @@ function StaffModal({
       </div>
 
       <form onSubmit={onSave} className="mt-7 space-y-5">
+        {error && <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-5 text-rose-700">{error}</p>}
         {modal.type === 'create' ? (
           <>
             <Field
@@ -1080,22 +1239,28 @@ function StaffModal({
               required
             />
 
-            <SelectField
-              label="Role"
-              value={form.role}
-              onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  role: value,
-                }))
-              }
-            >
-              {roles.map((role) => (
-                <option key={role} value={role}>
-                  {formatRole(role)}
-                </option>
-              ))}
-            </SelectField>
+            {form.role === ROLES.LEADER ? (
+              <SelectField label="Role" value={ROLES.LEADER} onChange={() => {}}>
+                <option value={ROLES.LEADER}>{formatRole(ROLES.LEADER)}</option>
+              </SelectField>
+            ) : (
+              <SelectField
+                label="Role"
+                value={form.role}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    role: value,
+                  }))
+                }
+              >
+                {roles.filter((role) => role !== ROLES.LEADER).map((role) => (
+                  <option key={role} value={role}>
+                    {formatRole(role)}
+                  </option>
+                ))}
+              </SelectField>
+            )}
 
             <div className="flex items-start gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
               <Mail
@@ -1178,21 +1343,6 @@ function StaffModal({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
-                label="Gender"
-                value={form.gender}
-                onChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    gender: value,
-                  }))
-                }
-              >
-                <option value="">Select gender</option>
-                <option value="MALE">Male</option>
-                <option value="FEMALE">Female</option>
-              </SelectField>
-
-              <SelectField
                 label="Role"
                 value={form.role}
                 onChange={(value) =>
@@ -1202,7 +1352,7 @@ function StaffModal({
                   }))
                 }
               >
-                {roles.map((role) => (
+                {roles.filter((role) => role !== ROLES.LEADER).map((role) => (
                   <option key={role} value={role}>
                     {formatRole(role)}
                   </option>
@@ -1223,9 +1373,15 @@ function StaffModal({
 
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463]"
+            disabled={saving}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {modal.type === 'edit' ? (
+            {saving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Saving changes…
+              </>
+            ) : modal.type === 'edit' ? (
               <>
                 <Edit3 size={16} />
                 Save changes
@@ -1251,15 +1407,20 @@ function CsvImportModal({
   onClose,
   onDownloadTemplate,
   onChooseFile,
+  loading,
+  error,
+  result,
 }) {
   const requiredColumns = [
     'firstName',
-    'lastName',
+    'surName',
     'email',
-    'phone',
-    'gender',
     'role',
   ];
+  const resultData = result?.data || {};
+  const emailFailures = Array.isArray(resultData.emailFailures)
+    ? resultData.emailFailures.length
+    : Number(resultData.emailFailures) || 0;
 
   return (
     <ModalShell onClose={onClose}>
@@ -1274,17 +1435,17 @@ function CsvImportModal({
         </p>
 
         <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">
-          Import staff from CSV
+          Import staff from CSV or Excel
         </h2>
 
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Add multiple staff members at once by preparing their details in a
-          spreadsheet and uploading the finished CSV file to ScholaNode.
+          Add multiple staff members at once using a CSV file or an Excel
+          workbook (.xlsx). Excel imports use the first worksheet.
         </p>
       </div>
 
       {/* =====================================================
-          WHY CSV
+          HOW IMPORT WORKS
       ====================================================== */}
 
       <div className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
@@ -1295,16 +1456,13 @@ function CsvImportModal({
 
           <div>
             <p className="text-sm font-bold text-cyan-900">
-              Why use CSV import?
+              Import staff from CSV or Excel
             </p>
 
             <p className="mt-2 text-sm leading-6 text-cyan-800">
-              CSV import saves time when adding many staff members. Instead of
-              completing the invitation form one person at a time, you can
-              prepare your entire staff list in{' '}
-              <strong>Excel, Google Sheets, or another spreadsheet app</strong>
-              , then save or export the spreadsheet as a{' '}
-              <strong>CSV file</strong> and upload it here.
+              Prepare your staff list in a spreadsheet and upload it as a
+              <strong> CSV file or .xlsx workbook</strong>. For Excel workbooks,
+              only the first worksheet is processed.
             </p>
           </div>
         </div>
@@ -1316,7 +1474,7 @@ function CsvImportModal({
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
         <p className="text-sm font-bold text-[#071A52]">
-          How CSV import works
+          How file import works
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -1328,14 +1486,14 @@ function CsvImportModal({
 
           <CsvStep
             number="2"
-            title="Save as CSV"
-            description="Export or save the spreadsheet as a .csv file."
+            title="Save the file"
+            description="Save as .csv or .xlsx. Only the first Excel worksheet is imported."
           />
 
           <CsvStep
             number="3"
             title="Upload"
-            description="Upload the completed CSV to ScholaNode."
+            description="Choose the completed CSV or Excel file."
           />
         </div>
       </div>
@@ -1352,9 +1510,9 @@ function CsvImportModal({
             </p>
 
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              The template already contains the column names expected by
-              ScholaNode. Download it, fill in your staff details, then save
-              or export it as a CSV file.
+              The template contains the exact column names and two valid
+              example records. Replace the example names and email addresses
+              with real staff details before importing.
             </p>
           </div>
 
@@ -1375,11 +1533,12 @@ function CsvImportModal({
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
         <p className="text-sm font-bold text-[#071A52]">
-          Required CSV columns
+          Required file columns
         </p>
 
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Your CSV file should contain these column names in the first row:
+          Your CSV or Excel file must contain these exact column names in the
+          first row:
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -1419,10 +1578,12 @@ function CsvImportModal({
           />
 
           <p className="text-xs leading-5 text-amber-800">
-            <strong>CSV is the upload format.</strong> You may use Excel or
-            Google Sheets to prepare the staff list, but make sure you save or
-            export the completed spreadsheet as a CSV file before uploading it
-            to ScholaNode.
+            <strong>Both CSV and .xlsx files are accepted.</strong> Excel
+            workbooks are read from the first worksheet only. Empty rows are
+            ignored; every non-empty staff row must pass validation before
+            anything is submitted. The downloaded template contains example
+            records—replace them before importing, or the examples will be
+            submitted as staff accounts.
           </p>
         </div>
       </div>
@@ -1431,22 +1592,52 @@ function CsvImportModal({
           ACTIONS
       ====================================================== */}
 
+      {(loading || error || result) && (
+        <div className="mt-6 scroll-mb-6" aria-live="polite">
+          {loading && (
+            <div role="status" className="flex items-center gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-semibold text-cyan-900">
+              <Loader2 size={18} className="animate-spin" />
+              Validating the file and importing staff records…
+            </div>
+          )}
+
+          {error && (
+            <p role="alert" className="whitespace-pre-line rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-5 text-rose-700">
+              {error}
+            </p>
+          )}
+
+          {result && (
+            <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <p className="font-bold">{result.message || 'Staff import completed.'}</p>
+              <p className="mt-2">
+                Imported: {Number(resultData.totalImported) || 0}
+                {' · '}Invitation emails sent: {Number(resultData.emailsSent) || 0}
+                {' · '}Email failures: {emailFailures}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={onClose}
-          className={secondaryButton}
+          disabled={loading}
+          className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          Cancel
+          {result ? 'Close' : 'Cancel'}
         </button>
 
         <button
           type="button"
           onClick={onChooseFile}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463]"
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <FileSpreadsheet size={16} />
-          Choose CSV file
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+          {loading ? 'Importing…' : result ? 'Import another file' : 'Choose CSV or Excel file'}
         </button>
       </div>
     </ModalShell>
@@ -1587,6 +1778,15 @@ function StatusBadge({ status }) {
     );
   }
 
+  if (status === 'SUSPENDED') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        Suspended
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
       <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
@@ -1714,6 +1914,33 @@ function EmptyState({
   );
 }
 
+function DeactivateStaffModal({ member, saving, error, onCancel, onConfirm }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071A52]/50 p-4 backdrop-blur-sm">
+      <section role="alertdialog" aria-modal="true" aria-labelledby="deactivate-staff-title" aria-describedby="deactivate-staff-description" className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+          <AlertCircle size={23} />
+        </div>
+        <h2 id="deactivate-staff-title" className="mt-5 text-2xl font-extrabold text-[#071A52]">Deactivate staff account?</h2>
+        <p id="deactivate-staff-description" className="mt-2 text-sm leading-6 text-slate-600">
+          You are about to deactivate <span className="font-bold text-[#071A52]">{member.firstName} {member.lastName}</span>{member.loginId ? ` (${member.loginId})` : ''}. This will change their account status and may prevent them from accessing the school portal.
+        </p>
+        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-5 text-amber-800">
+          Continue only if you intend to disable this staff account. You can reactivate it later.
+        </div>
+        {error && <p role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-5 text-rose-700">{error}</p>}
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={saving} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 disabled:opacity-50">Keep account active</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+            {saving && <Loader2 size={16} className="animate-spin" />}
+            {saving ? 'Deactivating…' : 'Deactivate account'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -1730,17 +1957,152 @@ const secondaryButton =
 const menuItem =
   'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50';
 
+const staffImportHeaders = ['firstName', 'surName', 'email', 'role'];
+const allowedImportRoles = new Set([
+  'STAFF',
+  'EXAM_OFFICER',
+  'VICE_LEADER',
+  'ADMINISTRATOR',
+]);
+const maxStaffImportRecords = 1000;
+const staffImportEmailPattern =
+  /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
+
+async function parseStaffImportFile(file, extension) {
+  const XLSX = await import('@e965/xlsx');
+  const fileContent = extension === 'csv'
+    ? await file.text()
+    : await file.arrayBuffer();
+  const workbook = XLSX.read(fileContent, {
+    type: extension === 'csv' ? 'string' : 'array',
+    raw: false,
+    cellDates: false,
+  });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) {
+    throw new Error('The selected file does not contain a worksheet.');
+  }
+
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
+    header: 1,
+    defval: '',
+    blankrows: true,
+    raw: false,
+  });
+  const headerRowIndex = rows.findIndex((row) =>
+    row.some((cell) => String(cell ?? '').trim() !== ''),
+  );
+  if (headerRowIndex < 0) {
+    throw new Error('The selected file is empty. Add the required column headers and staff records.');
+  }
+
+  const headers = rows[headerRowIndex].map((cell, index) => {
+    const value = String(cell ?? '');
+    return index === 0 ? value.replace(/^\uFEFF/, '') : value;
+  });
+  const errors = [];
+  const headerIndexes = {};
+
+  for (const header of staffImportHeaders) {
+    const indexes = headers
+      .map((value, index) => value === header ? index : -1)
+      .filter((index) => index >= 0);
+    if (indexes.length === 0) {
+      errors.push(`Missing required column "${header}".`);
+    } else if (indexes.length > 1) {
+      errors.push(`Required column "${header}" appears more than once.`);
+    } else {
+      headerIndexes[header] = indexes[0];
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(errors.join('\n'));
+  }
+
+  const records = rows
+    .slice(headerRowIndex + 1)
+    .map((row, index) => ({
+      rowNumber: headerRowIndex + index + 2,
+      row,
+    }))
+    .filter(({ row }) => row.some((cell) => String(cell ?? '').trim() !== ''))
+    .map(({ rowNumber, row }) => ({
+      rowNumber,
+      firstName: row[headerIndexes.firstName],
+      surName: row[headerIndexes.surName],
+      email: row[headerIndexes.email],
+      role: row[headerIndexes.role],
+    }));
+
+  return records;
+}
+
+function validateStaffImportRecords(records) {
+  const errors = [];
+  const staff = [];
+  const normalizedEmails = new Map();
+
+  if (records.length === 0) {
+    errors.push('No staff records were found below the header row.');
+  }
+  if (records.length > maxStaffImportRecords) {
+    errors.push(`A maximum of ${maxStaffImportRecords} staff records can be imported at once; this file contains ${records.length}.`);
+  }
+
+  records.forEach((record) => {
+    const firstName = String(record.firstName ?? '').trim();
+    const surName = String(record.surName ?? '').trim();
+    const email = String(record.email ?? '').trim().toLowerCase();
+    const role = String(record.role ?? '').trim().toUpperCase();
+    const rowErrors = [];
+
+    if (firstName.length < 2 || firstName.length > 50) {
+      rowErrors.push('firstName must be 2–50 characters');
+    }
+    if (surName.length < 2 || surName.length > 50) {
+      rowErrors.push('surName must be 2–50 characters');
+    }
+    if (!staffImportEmailPattern.test(email)) {
+      rowErrors.push('email must be a valid email address');
+    } else {
+      const matchingRows = normalizedEmails.get(email) || [];
+      matchingRows.push(record.rowNumber);
+      normalizedEmails.set(email, matchingRows);
+    }
+    if (!allowedImportRoles.has(role)) {
+      rowErrors.push(`role must be one of ${[...allowedImportRoles].join(', ')}`);
+    }
+
+    if (rowErrors.length) {
+      errors.push(`Row ${record.rowNumber}: ${rowErrors.join('; ')}.`);
+    }
+    staff.push({ firstName, surName, email, role });
+  });
+
+  normalizedEmails.forEach((rowNumbers) => {
+    if (rowNumbers.length > 1) {
+      errors.push(`Duplicate email "${String(records.find((record) => record.rowNumber === rowNumbers[0])?.email ?? '').trim().toLowerCase()}" appears on rows ${rowNumbers.join(', ')}.`);
+    }
+  });
+
+  return { errors, staff };
+}
+
+function formatStaffImportErrors(errors) {
+  const visibleErrors = errors.slice(0, 20);
+  const remainingCount = errors.length - visibleErrors.length;
+  if (remainingCount > 0) {
+    visibleErrors.push(`…and ${remainingCount} more validation issue${remainingCount === 1 ? '' : 's'}.`);
+  }
+  return visibleErrors.join('\n');
+}
+
 function formatRole(role) {
   return role
     .replaceAll('_', ' ')
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatGender(gender) {
-  if (!gender) return 'Not provided';
-
-  return gender === 'MALE' ? 'Male' : 'Female';
 }
 
 function formatDate(date) {
@@ -1753,26 +2115,16 @@ function formatDate(date) {
   });
 }
 
-function getNextStaffNumber(staff) {
-  const numbers = staff
-    .map((member) =>
-      Number(member.loginId?.replace(/\D/g, ''))
-    )
-    .filter((number) => Number.isFinite(number));
-
-  return Math.max(0, ...numbers) + 1;
-}
-
-function loadStaff() {
-  if (typeof window === 'undefined') {
-    return starterStaff;
-  }
-
-  try {
-    const saved = window.localStorage.getItem(storageKey);
-
-    return saved ? JSON.parse(saved) : starterStaff;
-  } catch {
-    return starterStaff;
-  }
+function normalizeStaff(response) {
+  const records = Array.isArray(response?.staff) ? response.staff : [];
+  return records.map((member) => ({
+    ...member,
+    id: member.id ?? member._id ?? member.staffId ?? '',
+    firstName: member.firstName ?? '',
+    lastName: member.surName ?? member.lastName ?? member.surname ?? '',
+    phone: member.phoneNumber ?? member.phone ?? '',
+    dateJoined: member.dateJoined ?? member.createdAt ?? '',
+    role: member.role === 'VICE' ? 'VICE_LEADER' : member.role ?? '',
+    status: member.status ?? 'INACTIVE',
+  }));
 }

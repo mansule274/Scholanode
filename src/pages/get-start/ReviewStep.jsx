@@ -1,4 +1,5 @@
 import { ClipboardCheck, LockKeyhole } from 'lucide-react';
+import { getRoleLabel } from '../../utils/roles';
 import { ReviewItem, SectionHeader } from './formComponents';
 
 export default function ReviewStep({ formData, selectedTierData, billingCycle }) {
@@ -13,7 +14,7 @@ export default function ReviewStep({ formData, selectedTierData, billingCycle })
           <ReviewItem
             label="Owner"
             value={`${formData.adminFirstName || ''} ${formData.adminSurname || ''}`.trim() || 'Not provided'}
-            secondary={formData.role === 'LEADER' ? (formData.schoolLevel === 'SECONDARY' ? 'Principal' : 'Head Teacher') : formData.role === 'VICE_LEADER' ? (formData.schoolLevel === 'SECONDARY' ? 'Vice Principal' : 'Vice Leader') : formData.role === 'ADMINISTRATOR' ? 'Administrator' : formData.role === 'EXAM_OFFICER' ? 'Exam Officer' : formData.role === 'STAFF' ? 'Staff' : formData.role || 'Role not selected'}
+            secondary={getRoleLabel(formData.role) || 'Role not selected'}
           />
 
           <ReviewItem label="Selected Plan" value={formData.plan === 'free' ? 'Free Plan' : 'Starter Plan'} secondary={formData.plan === 'starter' && selectedTierData ? `${selectedTierData.minStudents} - ${selectedTierData.maxStudents === null ? 'Unlimited' : selectedTierData.maxStudents} Students` : 'No payment required'} />

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -9,7 +9,7 @@ import {
   Edit3,
   Eye,
   FileSpreadsheet,
-  GraduationCap,
+  Loader2,
   MoreVertical,
   Plus,
   Search,
@@ -26,6 +26,8 @@ import {
   Mail,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { getClasses } from "./classesApi";
+import { createStudent } from "./studentsApi";
 
 /* ============================================================
    CONFIG
@@ -273,6 +275,7 @@ const blankForm = {
   admissionNumber: "",
   gender: "MALE",
   dateOfBirth: "",
+  currentClassId: "",
   currentClass: "",
   currentArm: "",
   enrollmentDate: "",
@@ -287,6 +290,12 @@ const blankForm = {
 
 export default function StudentManagement() {
   const [students, setStudents] = useState(() => loadStudents());
+  const [configuredClasses, setConfiguredClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState("");
+  const [creatingStudent, setCreatingStudent] = useState(false);
+  const [createStudentError, setCreateStudentError] = useState("");
+  const [studentActionMessage, setStudentActionMessage] = useState("");
   const [parents, setParents] = useState(() => loadParents());
   const [parentLinks, setParentLinks] = useState(() =>
     loadParentLinks()
@@ -322,6 +331,44 @@ export default function StudentManagement() {
   };
 
   const currentPermissions = permissions.ADMIN;
+
+  const loadConfiguredClasses = useCallback(async () => {
+    try {
+      const response = await getClasses();
+      setConfiguredClasses(extractConfiguredClasses(response));
+      setClassesError("");
+    } catch (requestError) {
+      setClassesError(
+        requestError?.response?.data?.message ||
+          "Unable to load configured classes.",
+      );
+    } finally {
+      setClassesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getClasses()
+      .then((response) => {
+        if (active) setConfiguredClasses(extractConfiguredClasses(response));
+      })
+      .catch((requestError) => {
+        if (active) {
+          setClassesError(
+            requestError?.response?.data?.message ||
+              "Unable to load configured classes.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setClassesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(students));
@@ -400,14 +447,6 @@ export default function StudentManagement() {
       student.status === "ACTIVE"
   ).length;
 
-  const maleStudents = students.filter(
-    (student) => student.gender === "MALE"
-  ).length;
-
-  const femaleStudents = students.filter(
-    (student) => student.gender === "FEMALE"
-  ).length;
-
   const studentsWithParents = students.filter((student) =>
     parentLinks.some(
       (link) => link.studentId === student.id
@@ -453,6 +492,8 @@ export default function StudentManagement() {
   const openCreateModal = () => {
     setForm(blankForm);
     setSelectedStudent(null);
+    setCreateStudentError("");
+    setStudentActionMessage("");
     setModal("create");
     setMenu(null);
   };
@@ -489,9 +530,10 @@ export default function StudentManagement() {
       ...previous,
       [field]: value,
     }));
+    if (modal === "create") setCreateStudentError("");
   };
 
-  const handleCreateStudent = (event) => {
+  const handleCreateStudent = async (event) => {
     event.preventDefault();
 
     if (
@@ -499,9 +541,11 @@ export default function StudentManagement() {
       !form.surName.trim() ||
       !form.admissionNumber.trim() ||
       !form.gender ||
-      !form.currentClass ||
-      !form.currentArm
+      !form.dateOfBirth ||
+      !form.currentClassId ||
+      !form.enrollmentDate
     ) {
+      setCreateStudentError("Complete all required student details before creating the student.");
       return;
     }
 
@@ -509,63 +553,29 @@ export default function StudentManagement() {
       .trim()
       .toUpperCase();
 
-    const exists = students.some(
-      (student) =>
-        student.admissionNumber.toLowerCase() ===
-        admissionNumber.toLowerCase()
-    );
-
-    if (exists) {
-      alert(
-        "A student with this admission number already exists."
+    setCreatingStudent(true);
+    setCreateStudentError("");
+    try {
+      const response = await createStudent({
+        firstName: form.firstName.trim(),
+        surName: form.surName.trim(),
+        admissionNumber,
+        gender: form.gender,
+        dateOfBirth: form.dateOfBirth,
+        currentClassId: form.currentClassId,
+        enrollmentDate: form.enrollmentDate,
+      });
+      setStudentActionMessage(response?.message || "Student created successfully.");
+      setModal(null);
+      setForm(blankForm);
+    } catch (requestError) {
+      setCreateStudentError(
+        requestError?.response?.data?.message ||
+          "Unable to create the student. Please review the details and try again.",
       );
-      return;
+    } finally {
+      setCreatingStudent(false);
     }
-
-    const newStudent = {
-      id: crypto.randomUUID(),
-      userId: crypto.randomUUID(),
-      schoolId: "school-1",
-
-      firstName: form.firstName.trim(),
-      surName: form.surName.trim(),
-
-      // Student login ID = admission number
-      loginId: admissionNumber,
-
-      admissionNumber,
-
-      gender: form.gender,
-      dateOfBirth: form.dateOfBirth || null,
-
-      currentClass: form.currentClass,
-      currentArm: form.currentArm,
-
-      enrollmentDate:
-        form.enrollmentDate ||
-        new Date().toISOString().slice(0, 10),
-
-      email: form.email.trim(),
-      phoneNumber: form.phoneNumber.trim(),
-
-      status: "ACTIVE",
-      admissionStatus: form.admissionStatus,
-
-      qrToken: crypto.randomUUID(),
-
-      lastLoginAt: null,
-      createdAt: new Date().toISOString(),
-    };
-
-    setStudents((previous) => [newStudent, ...previous]);
-
-    setModal(null);
-    setForm(blankForm);
-
-    /*
-      Parents are intentionally linked after the student exists.
-      This mirrors the future ParentStudent relationship.
-    */
   };
 
   const handleEditStudent = (event) => {
@@ -856,47 +866,48 @@ export default function StudentManagement() {
   ============================================================ */
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Header */}
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-3">
-              <Link
-                to="/administration"
-                className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-[#0A2463]"
-                title="Back to Administration"
-              >
-                <ArrowLeft size={19} />
-              </Link>
+    <main className="min-h-screen bg-slate-50 px-4 py-7 text-slate-900 sm:px-6 lg:px-8 lg:py-10">
+      <div className="mx-auto max-w-[1600px]">
+        <Link
+          to="/administration"
+          className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-[#071A52]"
+        >
+          <ArrowLeft size={17} />
+          Back
+        </Link>
 
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0A2463]/10 px-3 py-1 text-xs font-semibold text-[#0A2463]">
-                    <ShieldCheck size={13} />
-                    School administration
-                  </span>
-                </div>
+        <section className="relative mt-5 overflow-hidden rounded-3xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] p-6 text-white shadow-2xl shadow-[#071A52]/15 sm:p-9">
+          <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border-[36px] border-cyan-300/10" />
+          <div className="absolute bottom-[-2rem] left-[-2rem] h-32 w-32 rounded-full bg-cyan-300/10" />
 
-                <h1 className="text-2xl font-bold tracking-tight text-[#071A52] sm:text-3xl">
-                  Student Management
-                </h1>
-
-                <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                  Manage student records, admission numbers, class
-                  placement, parent relationships, and student
-                  account status.
-                </p>
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium">
+                <ShieldCheck size={17} />
+                School administration
               </div>
+
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
+                Academic records
+              </p>
+
+              <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                Student Management
+              </h1>
+
+              <p className="mt-3 max-w-2xl leading-7 text-blue-100">
+                Manage student records, admission numbers, class placement,
+                parent relationships, and student account status from one place.
+              </p>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
                 onClick={() => setShowCsvModal(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/15"
               >
-                <Upload size={17} />
+                <Upload size={18} />
                 Import CSV
               </button>
 
@@ -904,7 +915,7 @@ export default function StudentManagement() {
                 <button
                   type="button"
                   onClick={openCreateModal}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#071A52]"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-5 py-3 font-bold text-[#071A52] shadow-sm transition hover:bg-cyan-300"
                 >
                   <Plus size={18} />
                   Add student
@@ -912,102 +923,127 @@ export default function StudentManagement() {
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-        {/* Summary */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <header className="mt-8 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-600">
+              Student directory
+            </p>
+
+            <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">
+              School student records
+            </h2>
+          </div>
+
+          <p className="max-w-md text-sm leading-6 text-slate-500">
+            Search students, review class placement, and keep parent
+            relationships organised across the school.
+          </p>
+        </header>
+
+        {studentActionMessage && (
+          <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <span>{studentActionMessage}</span>
+            <button
+              type="button"
+              onClick={() => setStudentActionMessage("")}
+              aria-label="Dismiss message"
+              className="rounded-lg p-1 hover:bg-emerald-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
-            icon={<Users size={19} />}
+            icon={Users}
             label="Total students"
             value={totalStudents}
           />
 
           <SummaryCard
-            icon={<UserCheck size={19} />}
+            icon={UserCheck}
             label="Active students"
             value={activeStudents}
+            highlight
           />
 
           <SummaryCard
-            icon={<UserRound size={19} />}
+            icon={UserRound}
             label="With parents"
             value={studentsWithParents}
           />
 
           <SummaryCard
-            icon={<UserPlus size={19} />}
+            icon={UserPlus}
             label="No parent linked"
             value={studentsWithoutParents}
           />
         </div>
 
-        {/* Directory */}
-        <section className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-4 sm:p-5">
-            <div className="flex flex-col gap-4">
-              <div>
-                <h2 className="font-bold text-[#071A52]">
-                  Student directory
-                </h2>
+        <section className="mt-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-600">
+                Directory filters
+              </p>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Search students and manage their school records
-                  and parent relationships.
-                </p>
-              </div>
+              <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">
+                Find a student
+              </h2>
+            </div>
 
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                <div className="relative md:col-span-2 xl:col-span-1">
-                  <Search
-                    size={17}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(event) =>
-                      setSearch(event.target.value)
-                    }
-                    placeholder="Search name or admission no."
-                    className={inputClass("pl-10")}
-                  />
-                </div>
-
-                <SelectFilter
-                  value={classFilter}
-                  onChange={setClassFilter}
-                  options={["ALL", ...classes]}
-                  allLabel="All classes"
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative w-full sm:w-72">
+                <Search
+                  size={18}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                 />
 
-                <SelectFilter
-                  value={genderFilter}
-                  onChange={setGenderFilter}
-                  options={["ALL", "MALE", "FEMALE"]}
-                  allLabel="All genders"
-                  formatter={formatGender}
-                />
-
-                <SelectFilter
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  options={[
-                    "ALL",
-                    "ACTIVE",
-                    "GRADUATED",
-                    "TRANSFERRED",
-                    "WITHDRAWN",
-                  ]}
-                  allLabel="All statuses"
-                  formatter={formatAdmissionStatus}
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search name or admission no."
+                  className={`${inputClass} pl-10`}
                 />
               </div>
+
+              <SelectFilter
+                value={classFilter}
+                onChange={setClassFilter}
+                options={["ALL", ...classes]}
+                allLabel="All classes"
+              />
+
+              <SelectFilter
+                value={genderFilter}
+                onChange={setGenderFilter}
+                options={["ALL", "MALE", "FEMALE"]}
+                allLabel="All genders"
+                formatter={formatGender}
+              />
+
+              <SelectFilter
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  "ALL",
+                  "ACTIVE",
+                  "GRADUATED",
+                  "TRANSFERRED",
+                  "WITHDRAWN",
+                ]}
+                allLabel="All statuses"
+                formatter={formatAdmissionStatus}
+              />
             </div>
           </div>
+        </section>
 
+        <section className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           {/* Desktop table */}
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[1200px]">
@@ -1094,7 +1130,7 @@ export default function StudentManagement() {
             students
           </div>
         </section>
-      </main>
+      </div>
 
       {/* Student modal */}
       {(modal === "create" ||
@@ -1104,8 +1140,18 @@ export default function StudentManagement() {
           mode={modal}
           student={selectedStudent}
           form={form}
+          classes={configuredClasses}
+          classesLoading={classesLoading}
+          classesError={classesError}
+          onRetryClasses={() => {
+            setClassesLoading(true);
+            void loadConfiguredClasses();
+          }}
+          saving={creatingStudent}
+          createError={createStudentError}
           onChange={handleFormChange}
           onClose={() => {
+            if (creatingStudent) return;
             setModal(null);
             setSelectedStudent(null);
           }}
@@ -1133,7 +1179,6 @@ export default function StudentManagement() {
           student={selectedStudent}
           parents={parents}
           linkedParents={getStudentParents(selectedStudent.id)}
-          parentLinks={parentLinks}
           parentSearch={parentSearch}
           setParentSearch={setParentSearch}
           onClose={closeParentModal}
@@ -1160,7 +1205,7 @@ export default function StudentManagement() {
         onChange={handleCsvSelect}
         className="hidden"
       />
-    </div>
+    </main>
   );
 }
 
@@ -1495,6 +1540,12 @@ function StudentModal({
   mode,
   student,
   form,
+  classes: configuredClasses,
+  classesLoading,
+  classesError,
+  onRetryClasses,
+  saving,
+  createError,
   onChange,
   onClose,
   onSubmit,
@@ -1785,6 +1836,7 @@ function StudentModal({
               <Field
                 label="Date of birth"
                 type="date"
+                required={isCreate}
                 value={form.dateOfBirth}
                 onChange={(value) =>
                   onChange("dateOfBirth", value)
@@ -1794,6 +1846,7 @@ function StudentModal({
               <Field
                 label="Enrollment date"
                 type="date"
+                required={isCreate}
                 value={form.enrollmentDate}
                 onChange={(value) =>
                   onChange("enrollmentDate", value)
@@ -1810,43 +1863,65 @@ function StudentModal({
               </h3>
 
               <p className="mt-0.5 text-xs text-slate-500">
-                Assign the student to the current class and arm.
+                {isCreate
+                  ? "Choose a configured class for the student's enrollment."
+                  : "Assign the student to the current class and arm."}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <SelectField
-                label="Current class"
-                required
-                value={form.currentClass}
-                onChange={(value) =>
-                  onChange("currentClass", value)
-                }
-                options={classes.map((item) => [
-                  item,
-                  item,
-                ])}
-                placeholder="Select class"
-              />
+            {isCreate ? (
+              <div className="space-y-3">
+                {classesError && (
+                  <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    <p>{classesError}</p>
+                    <button type="button" onClick={onRetryClasses} disabled={classesLoading} className="mt-2 font-bold underline disabled:opacity-50">
+                      {classesLoading ? "Retrying…" : "Retry loading classes"}
+                    </button>
+                  </div>
+                )}
+                <SelectField
+                  label="Class"
+                  required
+                  value={form.currentClassId}
+                  onChange={(value) => onChange("currentClassId", value)}
+                  options={configuredClasses.map((item) => [
+                    item.id,
+                    `${item.classLevel}${item.arm ? ` · ${item.arm}` : ""}`,
+                  ])}
+                  placeholder={classesLoading ? "Loading classes…" : "Select class"}
+                  disabled={classesLoading || configuredClasses.length === 0}
+                />
+                {!classesLoading && !classesError && configuredClasses.length === 0 && (
+                  <p className="text-sm text-amber-700">
+                    No configured classes are available. Create classes in Academic Setup before enrolling a student.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <SelectField
+                  label="Current class"
+                  required
+                  value={form.currentClass}
+                  onChange={(value) => onChange("currentClass", value)}
+                  options={classes.map((item) => [item, item])}
+                  placeholder="Select class"
+                />
 
-              <SelectField
-                label="Current arm"
-                required
-                value={form.currentArm}
-                onChange={(value) =>
-                  onChange("currentArm", value)
-                }
-                options={arms.map((item) => [
-                  item,
-                  `Arm ${item}`,
-                ])}
-                placeholder="Select arm"
-              />
-            </div>
+                <SelectField
+                  label="Current arm"
+                  required
+                  value={form.currentArm}
+                  onChange={(value) => onChange("currentArm", value)}
+                  options={arms.map((item) => [item, `Arm ${item}`])}
+                  placeholder="Select arm"
+                />
+              </div>
+            )}
           </section>
 
           {/* Contact */}
-          <section className="border-t border-slate-200 pt-5">
+          {!isCreate && <section className="border-t border-slate-200 pt-5">
             <div className="mb-3">
               <h3 className="text-sm font-bold text-[#071A52]">
                 Contact information
@@ -1877,7 +1952,7 @@ function StudentModal({
                 placeholder="080..."
               />
             </div>
-          </section>
+          </section>}
 
           {/* Status */}
           {!isCreate && (
@@ -1916,9 +1991,15 @@ function StudentModal({
           </InfoBox>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            {isCreate && createError && (
+              <p role="alert" className="mr-auto whitespace-pre-line self-center text-sm text-rose-700">
+                {createError}
+              </p>
+            )}
             <button
               type="button"
               onClick={onClose}
+              disabled={saving}
               className={secondaryButton}
             >
               Cancel
@@ -1926,12 +2007,13 @@ function StudentModal({
 
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#071A52]"
+              disabled={saving || (isCreate && (classesLoading || configuredClasses.length === 0 || Boolean(classesError)))}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#071A52] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isCreate ? (
                 <>
-                  <UserPlus size={17} />
-                  Add student
+                  {saving ? <Loader2 size={17} className="animate-spin" /> : <UserPlus size={17} />}
+                  {saving ? "Creating student…" : "Add student"}
                 </>
               ) : (
                 <>
@@ -1955,7 +2037,6 @@ function ParentLinkModal({
   student,
   parents,
   linkedParents,
-  parentLinks,
   parentSearch,
   setParentSearch,
   onClose,
@@ -2557,22 +2638,40 @@ function CsvImportModal({
    SMALL COMPONENTS
 ============================================================ */
 
-function SummaryCard({ icon, label, value }) {
+function SummaryCard({ icon: Icon, label, value, highlight = false }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0A2463]/10 text-[#0A2463]">
-          {icon}
+    <div
+      className={`rounded-3xl border bg-white p-5 shadow-sm ${
+        highlight
+          ? "border-emerald-200 bg-emerald-50/20"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+            highlight
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-[#0A2463]/10 text-[#0A2463]"
+          }`}
+        >
+          {Icon ? <Icon size={19} /> : null}
         </div>
 
-        <span className="text-2xl font-bold text-[#071A52]">
-          {value}
-        </span>
-      </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            {label}
+          </p>
 
-      <p className="mt-3 text-sm font-medium text-slate-500">
-        {label}
-      </p>
+          <p
+            className={`mt-1 text-xl font-extrabold ${
+              highlight ? "text-emerald-700" : "text-[#071A52]"
+            }`}
+          >
+            {value}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2741,6 +2840,7 @@ function SelectField({
   onChange,
   options,
   placeholder,
+  disabled = false,
 }) {
   return (
     <label className="block">
@@ -2756,8 +2856,9 @@ function SelectField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           required={required}
+          disabled={disabled}
           className={inputClass(
-            "appearance-none pr-10"
+            `appearance-none pr-10 ${disabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""}`
           )}
         >
           {placeholder && (
@@ -2967,6 +3068,24 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function extractConfiguredClasses(response) {
+  const payload = response?.data?.data ?? response?.data ?? response ?? {};
+  const data = payload?.data ?? payload;
+  const records = Array.isArray(data.classes)
+    ? data.classes
+    : Array.isArray(data.data?.classes)
+      ? data.data.classes
+      : [];
+
+  return records
+    .map((item) => ({
+      id: item.id ?? item._id ?? item.classId ?? "",
+      classLevel: item.classLevel ?? item.levelName ?? item.name ?? "",
+      arm: item.arm || null,
+    }))
+    .filter((item) => item.id && item.classLevel);
 }
 
 function loadStudents() {

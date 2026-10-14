@@ -35,6 +35,7 @@ export default function SchoolSearch() {
     try {
       const res = await publicAxiosInstance.get(`/schools/get/${trimmed}`);
       setSchool(res.data?.data || res.data);
+      console.log('SchoolSearch: fetched school', res.data?.data || res.data);
     } catch (err) {
       setError('School not found. Check the code and try again.');
       console.error('SchoolSearch: error fetching school', err?.response?.data || err);
@@ -50,7 +51,17 @@ export default function SchoolSearch() {
     });
   };
 
+  const handleSchoolContact = (selectedSchool) => {
+    if (!selectedSchool) return;
+    navigate('/school-contact', {
+      state: { school: selectedSchool },
+    });
+  };
+
+  const schoolName = school?.name || school?.schoolName || 'School';
+  const schoolCodeValue = school?.code || school?.schoolCode || code;
   const contactEmail =
+    school?.supportEmail ||
     school?.contactEmail ||
     school?.email ||
     school?.schoolEmail ||
@@ -62,10 +73,12 @@ export default function SchoolSearch() {
       <div>
         <h3 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
           <Search className="text-[#071A52]" />
-          Find Your School
+          Search your school first
         </h3>
 
-        <p className="mt-1 text-slate-500">Enter your school's code to locate it quickly.</p>
+        <p className="mt-1 max-w-2xl text-slate-500">
+          First find your school using the school code, then continue to login or contact the school directly.
+        </p>
       </div>
 
       <div className="relative">
@@ -91,46 +104,67 @@ export default function SchoolSearch() {
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
       {school && (
-        <button
-          type="button"
-          onClick={() => handleSchoolSelect(school)}
-          className="mt-4 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#071A52]/30 hover:shadow-md"
-        >
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-lg font-bold text-[#071A52]">
-              {school.logoUrl || school.logo_url ? (
-                <img
-                  src={school.logoUrl || school.logo_url}
-                  alt={school.name || school.schoolName || 'School logo'}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span>{getSchoolInitials(school)}</span>
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h4 className="truncate font-semibold text-slate-900">
-                  {school.name || school.schoolName || 'School'}
-                </h4>
-                <span className="text-xs font-medium text-slate-500">
-                  Code: {school.code || school.schoolCode || code}
-                </span>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-lg font-bold text-[#071A52]">
+                {school.logoUrl || school.logo_url ? (
+                  <img
+                    src={school.logoUrl || school.logo_url}
+                    alt={schoolName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span>{getSchoolInitials(school)}</span>
+                )}
               </div>
 
-              <div className="mt-3">
-                <a
-                  href={`mailto:${contactEmail}?subject=${encodeURIComponent('Contact School')}`}
-                  onClick={(event) => event.stopPropagation()}
-                  className="text-xs font-medium text-[#0EA5E9] underline-offset-2 hover:underline"
-                >
-                  Contact school
-                </a>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="truncate font-semibold text-slate-900">{schoolName}</h4>
+                  <span className="text-xs font-medium text-slate-500">Code: {schoolCodeValue}</span>
+                </div>
+
+                <p className="mt-2 text-sm text-slate-500">
+                  {school.welcomeMessage || school.description || 'Secure school access and communication for students, parents, and staff.'}
+                </p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                  <span className="rounded-full bg-slate-100 px-2 py-1">{school.schoolLevel || school.level || 'School'}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1">{school.ownershipType || school.ownership || 'School'}</span>
+                </div>
               </div>
             </div>
           </div>
-        </button>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <button
+              type="button"
+              onClick={() => handleSchoolContact(school)}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Contact
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSchoolSelect(school)}
+              className="inline-flex items-center justify-center rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A2463]"
+            >
+              Login
+            </button>
+          </div>
+
+          <div className="mt-3 border-t border-slate-100 pt-3">
+            <a
+              href={`mailto:${contactEmail}?subject=${encodeURIComponent('Contact School')}`}
+              onClick={(event) => event.stopPropagation()}
+              className="text-xs font-medium text-[#0EA5E9] underline-offset-2 hover:underline"
+            >
+              Email school support
+            </a>
+          </div>
+        </div>
       )}
     </section>
   );

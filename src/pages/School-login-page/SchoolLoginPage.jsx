@@ -18,10 +18,12 @@ import {
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import publicAxiosInstance from '../../auth/publicAxiosInstance';
+import { useUserContext } from '../../context/UserContext';
 
 export default function SchoolLoginPage({ onBack }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useUserContext();
   const school = location.state?.school || {};
   const schoolName = school.name || school.schoolName || 'School';
   const schoolCode = school.code || school.schoolCode || 'school-code';
@@ -63,8 +65,17 @@ export default function SchoolLoginPage({ onBack }) {
       console.log('Login request payload:', payload);
       const response = await publicAxiosInstance.post('/auths/login', payload);
       console.log('Login success response:', response.data);
-      localStorage.setItem('accessToken', response.data.accessToken);
-      navigate('/school-dashboard', { state: { school, user: response.data?.data } });
+
+      const token = response.data?.accessToken;
+      const user = response.data?.data || response.data?.user || { loginId: trimmedLoginId };
+
+      if (token) {
+        login(token, user);
+      } else {
+        localStorage.setItem('accessToken', '');
+      }
+
+      navigate('/private/dashboard', { state: { school, user } });
     } catch (error) {
       console.error('Login request failed:', {
         payload: {
