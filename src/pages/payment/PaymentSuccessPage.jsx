@@ -264,7 +264,7 @@ export default function PaymentSuccessPage() {
 
               {/* CTA */}
               <Link
-                to="/admin-dashboard"
+                to="/dashboard"
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-[#071A52]/10 transition hover:bg-[#0A2463]"
               >
                 Go to School Dashboard

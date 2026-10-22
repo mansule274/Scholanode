@@ -10,15 +10,8 @@ import {
   Users,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useUserContext } from '../../context/UserContext';
 import CreatorActions from '../../components/CreatorActions';
-
-const dashboardData = {
-  admin: { firstName: 'Amina' },
-  school: {
-    name: 'FUD International School',
-    code: 'fud-international',
-  },
-};
 
 const quickLinks = [
   ['Students', Users, '/students'],
@@ -29,8 +22,14 @@ const quickLinks = [
   ['Results', ClipboardList, '/results'],
 ];
 
-export default function AdminDashboard() {
-  const { admin, school } = dashboardData;
+export default function AdministrativeDashboard() {
+  const { user, school } = useUserContext();
+  const fullName = [user?.firstName, user?.surName || user?.surname || user?.lastName]
+    .filter(Boolean)
+    .join(' ');
+  const schoolName = school?.schoolName || 'Your School';
+  const schoolCode = school?.schoolCode || 'school-code';
+  const greetingName = user?.firstName || 'Admin';
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -41,7 +40,7 @@ export default function AdminDashboard() {
               School administration
             </p>
             <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[#071A52] sm:text-4xl">
-              Good afternoon, {admin.firstName}
+              Good afternoon, {greetingName}
             </h1>
             <p className="mt-2 text-slate-500">
               A clear view of your school and the tools you need to manage it.
@@ -68,10 +67,10 @@ export default function AdminDashboard() {
                 Your school
               </p>
               <h2 className="mt-1 text-lg font-extrabold text-slate-900 sm:text-xl">
-                {school.name}
+                {schoolName}
               </h2>
               <p className="mt-0.5 text-sm text-slate-500">
-                {school.code}
+                {schoolCode}
               </p>
             </div>
           </div>

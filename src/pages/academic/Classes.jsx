@@ -19,7 +19,7 @@ import {
 import { Link } from 'react-router-dom';
 import { createAcademicClass } from './academicSetupApi';
 import { assignClassFormMaster, getClasses } from './classesApi';
-import { getStaff } from './staffApi';
+import { getStaff } from '../people/staffApi';
 import { armTemplates } from './classTemplates';
 
 const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
@@ -49,7 +49,8 @@ export default function Classes() {
     setLoading(true);
     setError('');
     try {
-      setClasses(extractClasses(await getClasses()));
+      const response = await getClasses();
+      setClasses(extractClasses(response));
       return true;
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'Unable to load the school classes.');
@@ -500,18 +501,34 @@ function extractClasses(response) {
   const payload = response?.data?.data ?? response?.data ?? response ?? {};
   const data = payload?.data ?? payload;
   const records = Array.isArray(data.classes) ? data.classes : data.class ? [data.class] : [];
-  return records.map((item) => ({
-    ...item,
-    id: item.id ?? item._id ?? item.classId,
-    classLevel: item.classLevel || item.levelName || item.name || '',
-    arm: item.arm || null,
-    formMasterId: typeof item.formMaster === 'object'
-      ? item.formMaster?.id || item.formMaster?._id || item.formMasterId || ''
-      : item.formMasterId || '',
-    formMaster: typeof item.formMaster === 'string'
-      ? item.formMaster
-      : item.formMaster?.fullName || item.formMaster?.name || item.formMasterName || '',
-  })).filter((item) => item.classLevel);
+  return records.map((item) => {
+    const formMaster = item.formMaster;
+    const formMasterName =
+      typeof formMaster === 'string'
+        ? formMaster
+        : [
+            formMaster?.firstName,
+            formMaster?.surName ?? formMaster?.lastName,
+          ]
+            .filter(Boolean)
+            .join(' ') ||
+          formMaster?.fullName ||
+          formMaster?.name ||
+          item.formMasterName ||
+          '';
+
+    return {
+      ...item,
+      id: item.id ?? item._id ?? item.classId,
+      classLevel: item.classLevel || item.levelName || item.name || '',
+      arm: item.arm || null,
+      formMasterId:
+        (typeof formMaster === 'object' ? formMaster?.id ?? formMaster?._id : '') ||
+        item.formMasterId ||
+        '',
+      formMaster: formMasterName,
+    };
+  }).filter((item) => item.classLevel);
 }
 
 function extractStaff(response) {

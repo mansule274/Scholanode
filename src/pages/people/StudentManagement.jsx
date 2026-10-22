@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Ban,
   Check,
   ChevronDown,
   Copy,
-  Download,
   Edit3,
   Eye,
   FileSpreadsheet,
@@ -19,246 +18,24 @@ import {
   Users,
   UserRound,
   X,
-  Upload,
   Link2,
   Unlink,
   Phone,
   Mail,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getClasses } from "./classesApi";
-import { createStudent } from "./studentsApi";
+import { getClasses } from "../academic/classesApi";
+import { createStudent, getStudents, importStudents } from "./studentsApi";
+import {
+  createParent,
+  getAllParents,
+  linkStudentToParent,
+  unlinkStudentFromParent,
+} from "./parentApi";
 
 /* ============================================================
    CONFIG
 ============================================================ */
-
-const storageKey = "scholanode-students";
-const parentsStorageKey = "scholanode-parents";
-const parentLinksStorageKey = "scholanode-parent-links";
-
-/* ============================================================
-   STARTER STUDENTS
-============================================================ */
-
-const starterStudents = [
-  {
-    id: "student-1",
-    userId: "user-student-1",
-    schoolId: "school-1",
-    firstName: "Ahmad",
-    surName: "Musa",
-    loginId: "ADM001",
-    admissionNumber: "ADM001",
-    gender: "MALE",
-    dateOfBirth: "2011-04-18",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "ACTIVE",
-    admissionStatus: "ACTIVE",
-    currentClassId: "class-jss2",
-    currentClass: "JSS 2",
-    currentArmId: "arm-a",
-    currentArm: "A",
-    enrollmentDate: "2025-09-08",
-    qrToken: "qr-student-1",
-    lastLoginAt: "2026-10-05T08:30:00.000Z",
-    createdAt: "2025-09-08T10:00:00.000Z",
-  },
-  {
-    id: "student-2",
-    userId: "user-student-2",
-    schoolId: "school-1",
-    firstName: "Maryam",
-    surName: "Ibrahim",
-    loginId: "ADM002",
-    admissionNumber: "ADM002",
-    gender: "FEMALE",
-    dateOfBirth: "2012-01-12",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "ACTIVE",
-    admissionStatus: "ACTIVE",
-    currentClassId: "class-jss1",
-    currentClass: "JSS 1",
-    currentArmId: "arm-b",
-    currentArm: "B",
-    enrollmentDate: "2025-09-08",
-    qrToken: "qr-student-2",
-    lastLoginAt: "2026-10-06T07:45:00.000Z",
-    createdAt: "2025-09-08T10:10:00.000Z",
-  },
-  {
-    id: "student-3",
-    userId: "user-student-3",
-    schoolId: "school-1",
-    firstName: "Abdullahi",
-    surName: "Yusuf",
-    loginId: "ADM003",
-    admissionNumber: "ADM003",
-    gender: "MALE",
-    dateOfBirth: "2010-11-03",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "ACTIVE",
-    admissionStatus: "ACTIVE",
-    currentClassId: "class-ss1",
-    currentClass: "SS 1",
-    currentArmId: "arm-a",
-    currentArm: "A",
-    enrollmentDate: "2024-09-09",
-    qrToken: "qr-student-3",
-    lastLoginAt: "2026-10-04T09:15:00.000Z",
-    createdAt: "2024-09-09T09:00:00.000Z",
-  },
-  {
-    id: "student-4",
-    userId: "user-student-4",
-    schoolId: "school-1",
-    firstName: "Fatima",
-    surName: "Sani",
-    loginId: "ADM004",
-    admissionNumber: "ADM004",
-    gender: "FEMALE",
-    dateOfBirth: "2013-06-22",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "ACTIVE",
-    admissionStatus: "ACTIVE",
-    currentClassId: "class-primary5",
-    currentClass: "Primary 5",
-    currentArmId: "arm-a",
-    currentArm: "A",
-    enrollmentDate: "2025-09-08",
-    qrToken: "qr-student-4",
-    lastLoginAt: null,
-    createdAt: "2025-09-08T11:00:00.000Z",
-  },
-  {
-    id: "student-5",
-    userId: "user-student-5",
-    schoolId: "school-1",
-    firstName: "Usman",
-    surName: "Bello",
-    loginId: "ADM005",
-    admissionNumber: "ADM005",
-    gender: "MALE",
-    dateOfBirth: "2009-02-10",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "INACTIVE",
-    admissionStatus: "TRANSFERRED",
-    currentClassId: "class-ss2",
-    currentClass: "SS 2",
-    currentArmId: "arm-b",
-    currentArm: "B",
-    enrollmentDate: "2023-09-11",
-    qrToken: "qr-student-5",
-    lastLoginAt: null,
-    createdAt: "2023-09-11T08:00:00.000Z",
-  },
-  {
-    id: "student-6",
-    userId: "user-student-6",
-    schoolId: "school-1",
-    firstName: "Aisha",
-    surName: "Garba",
-    loginId: "ADM006",
-    admissionNumber: "ADM006",
-    gender: "FEMALE",
-    dateOfBirth: "2008-08-19",
-    phoneNumber: "",
-    email: "",
-    profileImageUrl: "",
-    status: "INACTIVE",
-    admissionStatus: "GRADUATED",
-    currentClassId: "class-ss3",
-    currentClass: "SS 3",
-    currentArmId: "arm-a",
-    currentArm: "A",
-    enrollmentDate: "2022-09-12",
-    qrToken: "qr-student-6",
-    lastLoginAt: null,
-    createdAt: "2022-09-12T08:00:00.000Z",
-  },
-];
-
-/* ============================================================
-   STARTER PARENTS
-   This represents the future Parent table.
-============================================================ */
-
-const starterParents = [
-  {
-    id: "parent-1",
-    schoolId: "school-1",
-    firstName: "Musa",
-    surName: "Ibrahim",
-    phoneNumber: "08012345678",
-    email: "musa.ibrahim@example.com",
-    userId: "user-parent-1",
-    accountStatus: "ACTIVE",
-  },
-  {
-    id: "parent-2",
-    schoolId: "school-1",
-    firstName: "Aisha",
-    surName: "Musa",
-    phoneNumber: "08123456789",
-    email: "",
-    userId: "user-parent-2",
-    accountStatus: "ACTIVE",
-  },
-];
-
-/* ============================================================
-   STARTER PARENT-STUDENT RELATIONSHIPS
-   This represents the future ParentStudent table.
-============================================================ */
-
-const starterParentLinks = [
-  {
-    id: "parent-link-1",
-    schoolId: "school-1",
-    parentId: "parent-1",
-    studentId: "student-1",
-    relationship: "FATHER",
-  },
-  {
-    id: "parent-link-2",
-    schoolId: "school-1",
-    parentId: "parent-1",
-    studentId: "student-2",
-    relationship: "FATHER",
-  },
-  {
-    id: "parent-link-3",
-    schoolId: "school-1",
-    parentId: "parent-2",
-    studentId: "student-2",
-    relationship: "MOTHER",
-  },
-];
-
-const classes = [
-  "Primary 1",
-  "Primary 2",
-  "Primary 3",
-  "Primary 4",
-  "Primary 5",
-  "Primary 6",
-  "JSS 1",
-  "JSS 2",
-  "JSS 3",
-  "SS 1",
-  "SS 2",
-  "SS 3",
-];
 
 const arms = ["A", "B", "C", "D"];
 
@@ -289,17 +66,33 @@ const blankForm = {
 ============================================================ */
 
 export default function StudentManagement() {
-  const [students, setStudents] = useState(() => loadStudents());
+  const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(true);
+  const [studentsError, setStudentsError] = useState("");
+  const [studentsPage, setStudentsPage] = useState(1);
+  const [studentsRefreshKey, setStudentsRefreshKey] = useState(0);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
+  const [summary, setSummary] = useState({
+    totalStudents: 0,
+    activeStudents: 0,
+  });
   const [configuredClasses, setConfiguredClasses] = useState([]);
   const [classesLoading, setClassesLoading] = useState(true);
   const [classesError, setClassesError] = useState("");
   const [creatingStudent, setCreatingStudent] = useState(false);
   const [createStudentError, setCreateStudentError] = useState("");
   const [studentActionMessage, setStudentActionMessage] = useState("");
-  const [parents, setParents] = useState(() => loadParents());
-  const [parentLinks, setParentLinks] = useState(() =>
-    loadParentLinks()
-  );
+  const [parents, setParents] = useState([]);
+  const [parentsLoading, setParentsLoading] = useState(true);
+  const [parentsError, setParentsError] = useState("");
+  const [parentsRefreshKey, setParentsRefreshKey] = useState(0);
 
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("ALL");
@@ -314,11 +107,17 @@ export default function StudentManagement() {
 
   const [showCsvModal, setShowCsvModal] = useState(false);
   const csvInputRef = useRef(null);
+  const [studentImportLoading, setStudentImportLoading] = useState(false);
+  const [studentImportError, setStudentImportError] = useState("");
+  const [studentImportResult, setStudentImportResult] = useState(null);
 
   const [copied, setCopied] = useState("");
 
   const [parentModal, setParentModal] = useState(null);
+  const [unlinkingParent, setUnlinkingParent] = useState(null);
   const [parentSearch, setParentSearch] = useState("");
+  const [creatingParent, setCreatingParent] = useState(false);
+  const [createParentError, setCreateParentError] = useState("");
 
   const permissions = {
     ADMIN: {
@@ -371,118 +170,124 @@ export default function StudentManagement() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(students));
-  }, [students]);
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!active) return null;
+        setParentsLoading(true);
+        setParentsError("");
+        return getAllParents();
+      })
+      .then((records) => {
+        if (active && records) setParents(records);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setParentsError(
+            requestError?.response?.data?.message ||
+              requestError?.message ||
+              "Unable to load parents."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setParentsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [parentsRefreshKey]);
 
   useEffect(() => {
-    localStorage.setItem(
-      parentsStorageKey,
-      JSON.stringify(parents)
-    );
-  }, [parents]);
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!active) return null;
+        setStudentsLoading(true);
+        setStudentsError("");
+        return getStudents({
+          page: studentsPage,
+          limit: pagination.pageSize,
+          search: search.trim(),
+          currentClassId: classFilter === "ALL" ? undefined : classFilter,
+          gender: genderFilter === "ALL" ? undefined : genderFilter,
+          admissionStatus: statusFilter === "ALL" ? undefined : statusFilter,
+        });
+      })
+      .then((response) => {
+        if (!active || !response) return;
+        const data = response?.data;
+        if (
+          !Array.isArray(data?.students) ||
+          !data.pagination ||
+          !data.summary
+        ) {
+          throw new Error("The server returned an invalid student list.");
+        }
 
-  useEffect(() => {
-    localStorage.setItem(
-      parentLinksStorageKey,
-      JSON.stringify(parentLinks)
-    );
-  }, [parentLinks]);
+        if (active) {
+          setStudents(data.students);
+          setPagination(data.pagination);
+          setSummary(data.summary);
+          setStudentsPage(data.pagination.currentPage);
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          setStudentsError(
+            requestError?.response?.data?.message ||
+              requestError?.message ||
+              "Unable to load students.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setStudentsLoading(false);
+      });
 
-  /* ============================================================
-     FILTERING
-  ============================================================ */
-
-  const filteredStudents = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return students.filter((student) => {
-      const fullName =
-        `${student.firstName} ${student.surName}`.toLowerCase();
-
-      const matchesSearch =
-        !query ||
-        fullName.includes(query) ||
-        student.admissionNumber
-          ?.toLowerCase()
-          .includes(query) ||
-        student.email?.toLowerCase().includes(query) ||
-        student.phoneNumber?.toLowerCase().includes(query);
-
-      const matchesClass =
-        classFilter === "ALL" ||
-        student.currentClass === classFilter;
-
-      const matchesGender =
-        genderFilter === "ALL" ||
-        student.gender === genderFilter;
-
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        student.admissionStatus === statusFilter;
-
-      return (
-        matchesSearch &&
-        matchesClass &&
-        matchesGender &&
-        matchesStatus
-      );
-    });
+    return () => {
+      active = false;
+    };
   }, [
-    students,
+    studentsPage,
+    pagination.pageSize,
     search,
     classFilter,
     genderFilter,
     statusFilter,
+    studentsRefreshKey,
   ]);
 
   /* ============================================================
      SUMMARY
   ============================================================ */
 
-  const totalStudents = students.length;
-
-  const activeStudents = students.filter(
-    (student) =>
-      student.admissionStatus === "ACTIVE" &&
-      student.status === "ACTIVE"
+  const studentsWithParents = students.filter(
+    (student) => Number(student.parentCount) > 0
   ).length;
-
-  const studentsWithParents = students.filter((student) =>
-    parentLinks.some(
-      (link) => link.studentId === student.id
-    )
-  ).length;
-
-  const studentsWithoutParents =
-    totalStudents - studentsWithParents;
+  const studentsWithoutParents = students.length - studentsWithParents;
 
   /* ============================================================
      PARENT HELPERS
   ============================================================ */
 
   const getStudentParents = (studentId) => {
-    return parentLinks
-      .filter((link) => link.studentId === studentId)
-      .map((link) => {
-        const parent = parents.find(
-          (item) => item.id === link.parentId
-        );
-
-        if (!parent) return null;
-
-        return {
+    return parents.flatMap((parent) =>
+      (parent.studentRelationships || [])
+        .filter((link) => link.studentId === studentId)
+        .map((link) => ({
           ...parent,
           relationship: link.relationship,
           linkId: link.id,
-        };
-      })
-      .filter(Boolean);
+          studentId: link.studentId,
+        }))
+    );
   };
 
   const getParentStudentCount = (parentId) => {
-    return parentLinks.filter(
-      (link) => link.parentId === parentId
-    ).length;
+    return parents.find((parent) => parent.id === parentId)
+      ?.studentRelationships?.length ?? 0;
   };
 
   /* ============================================================
@@ -568,6 +373,8 @@ export default function StudentManagement() {
       setStudentActionMessage(response?.message || "Student created successfully.");
       setModal(null);
       setForm(blankForm);
+      setStudentsPage(1);
+      setStudentsRefreshKey((previous) => previous + 1);
     } catch (requestError) {
       setCreateStudentError(
         requestError?.response?.data?.message ||
@@ -683,138 +490,263 @@ export default function StudentManagement() {
   const openParentModal = (student) => {
     setSelectedStudent(student);
     setParentSearch("");
+    setCreateParentError("");
     setParentModal("manage");
   };
 
   const closeParentModal = () => {
+    if (creatingParent) return;
     setParentModal(null);
     setParentSearch("");
+    setCreateParentError("");
   };
 
-  const linkExistingParent = (parent, relationship) => {
-    if (!selectedStudent) return;
-
-    const alreadyLinked = parentLinks.some(
-      (link) =>
-        link.studentId === selectedStudent.id &&
-        link.parentId === parent.id
-    );
-
-    if (alreadyLinked) {
-      alert("This parent is already linked to this student.");
+  const linkExistingParent = async (parent, relationship) => {
+    if (!selectedStudent) {
+      setCreateParentError("Select a student before linking a parent.");
       return;
     }
 
-    const newLink = {
-      id: crypto.randomUUID(),
-      schoolId: "school-1",
-      parentId: parent.id,
-      studentId: selectedStudent.id,
-      relationship,
-    };
+    setCreatingParent(true);
+    setCreateParentError("");
+    try {
+      const response = await linkStudentToParent({
+        parentId: parent.id,
+        studentId: selectedStudent.id,
+        relationship,
+      });
+      const linkedRelationship = response?.relationship;
+      if (
+        !linkedRelationship?.id ||
+        !linkedRelationship.parentId ||
+        !linkedRelationship.studentId
+      ) {
+        throw new Error(
+          response?.message ||
+            "The parent was linked, but the response did not include the relationship record."
+        );
+      }
 
-    setParentLinks((previous) => [
-      ...previous,
-      newLink,
-    ]);
-
-    setParentModal(null);
-    setParentSearch("");
+      setParents((previous) =>
+        previous.map((item) =>
+          item.id === linkedRelationship.parentId
+            ? {
+                ...item,
+                studentRelationships: [
+                  ...(item.studentRelationships || []).filter(
+                    (link) =>
+                      link.id !== linkedRelationship.id &&
+                      link.studentId !== linkedRelationship.studentId
+                  ),
+                  {
+                    ...linkedRelationship,
+                    student: {
+                      id: selectedStudent.id,
+                      admissionNumber: selectedStudent.admissionNumber,
+                      firstName: selectedStudent.firstName,
+                      surName: selectedStudent.surName,
+                      currentClassId: selectedStudent.currentClassId,
+                    },
+                  },
+                ],
+              }
+            : item
+        )
+      );
+      setStudents((previous) =>
+        previous.map((student) =>
+          student.id === linkedRelationship.studentId
+            ? {
+                ...student,
+                parentCount: Number(student.parentCount || 0) + 1,
+              }
+            : student
+        )
+      );
+      setStudentActionMessage(
+        response.message || "Parent linked to student successfully."
+      );
+      setParentModal(null);
+      setParentSearch("");
+    } catch (requestError) {
+      setCreateParentError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to link this parent to the student. Please try again."
+      );
+    } finally {
+      setCreatingParent(false);
+    }
   };
 
-  const createAndLinkParent = ({
+  const createAndLinkParent = async ({
     firstName,
     surName,
     phoneNumber,
     email,
     relationship,
   }) => {
-    if (!selectedStudent) return;
-
-    const normalizedPhone = phoneNumber.trim();
-
-    if (!normalizedPhone) {
-      alert("Parent phone number is required.");
+    if (!selectedStudent) {
+      setCreateParentError("Select a student before creating a linked parent.");
       return;
     }
 
-    const existingParent = parents.find(
-      (parent) =>
-        parent.phoneNumber.replace(/\s/g, "") ===
-        normalizedPhone.replace(/\s/g, "")
-    );
-
-    if (existingParent) {
-      const alreadyLinked = parentLinks.some(
-        (link) =>
-          link.studentId === selectedStudent.id &&
-          link.parentId === existingParent.id
+    if (
+      !firstName.trim() ||
+      !surName.trim() ||
+      !phoneNumber.trim() ||
+      !email.trim()
+    ) {
+      setCreateParentError(
+        "First name, surname, phone number, and email are required."
       );
+      return;
+    }
 
-      if (alreadyLinked) {
-        alert(
-          "This parent is already linked to this student."
-        );
-        return;
-      }
-
-      setParentLinks((previous) => [
-        ...previous,
-        {
-          id: crypto.randomUUID(),
-          schoolId: "school-1",
-          parentId: existingParent.id,
+    setCreatingParent(true);
+    setCreateParentError("");
+    try {
+      const response = await createParent({
+        firstName: firstName.trim(),
+        surName: surName.trim(),
+        phoneNumber: phoneNumber.trim(),
+        email: email.trim(),
+        student: {
           studentId: selectedStudent.id,
           relationship,
         },
+      });
+
+      const createdParent = response?.parent;
+      if (!createdParent?.id) {
+        throw new Error(
+          response?.message ||
+            "Parent creation succeeded, but the response did not include the parent record."
+        );
+      }
+
+      const studentRelationship = response.studentRelationship;
+      const parentRecord = {
+        ...createdParent,
+        studentRelationships: studentRelationship?.id
+          ? [
+              {
+                ...studentRelationship,
+                parentId: createdParent.id,
+                student: {
+                  id: selectedStudent.id,
+                  admissionNumber: selectedStudent.admissionNumber,
+                  firstName: selectedStudent.firstName,
+                  surName: selectedStudent.surName,
+                  currentClassId: selectedStudent.currentClassId,
+                },
+              },
+            ]
+          : [],
+      };
+      setParents((previous) => [
+        parentRecord,
+        ...previous.filter((item) => item.id !== parentRecord.id),
       ]);
+      setParentsError("");
+      if (studentRelationship?.studentId) {
+        setStudents((previous) =>
+          previous.map((student) =>
+            student.id === studentRelationship.studentId
+              ? {
+                  ...student,
+                  parentCount: Number(student.parentCount || 0) + 1,
+                }
+              : student
+          )
+        );
+      }
 
+      setStudentActionMessage(
+        response.message ||
+          (studentRelationship
+            ? "Parent account created and linked successfully."
+            : "Parent account created successfully.")
+      );
       setParentModal(null);
-      return;
+      setParentSearch("");
+    } catch (requestError) {
+      setCreateParentError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to create and link the parent. Please try again."
+      );
+    } finally {
+      setCreatingParent(false);
     }
-
-    const newParent = {
-      id: crypto.randomUUID(),
-      schoolId: "school-1",
-      firstName: firstName.trim(),
-      surName: surName.trim(),
-      phoneNumber: normalizedPhone,
-      email: email.trim(),
-      userId: crypto.randomUUID(),
-      accountStatus: "ACTIVE",
-    };
-
-    const newLink = {
-      id: crypto.randomUUID(),
-      schoolId: "school-1",
-      parentId: newParent.id,
-      studentId: selectedStudent.id,
-      relationship,
-    };
-
-    setParents((previous) => [
-      ...previous,
-      newParent,
-    ]);
-
-    setParentLinks((previous) => [
-      ...previous,
-      newLink,
-    ]);
-
-    setParentModal(null);
   };
 
-  const unlinkParent = (linkId) => {
-    if (!window.confirm(
-      "Unlink this parent from the student?"
-    )) {
-      return;
-    }
+  const unlinkParent = async (parent) => {
+    if (!selectedStudent) return;
+    setUnlinkingParent(parent);
+  };
 
-    setParentLinks((previous) =>
-      previous.filter((link) => link.id !== linkId)
-    );
+  const confirmUnlinkParent = async () => {
+    const parent = unlinkingParent;
+    if (!selectedStudent || !parent) return;
+    setCreatingParent(true);
+    setCreateParentError("");
+    try {
+      const response = await unlinkStudentFromParent({
+        parentId: parent.id,
+        studentId: selectedStudent.id,
+      });
+      const unlinkedRelationship = response?.unlinkedRelationship;
+      if (
+        unlinkedRelationship?.parentId !== parent.id ||
+        unlinkedRelationship?.studentId !== selectedStudent.id
+      ) {
+        throw new Error(
+          response?.message ||
+            "The parent was unlinked, but the response did not confirm the relationship."
+        );
+      }
+
+      setParents((previous) =>
+        previous.map((item) =>
+          item.id === parent.id
+            ? {
+                ...item,
+                studentRelationships: (
+                  item.studentRelationships || []
+                ).filter(
+                  (link) => link.studentId !== selectedStudent.id
+                ),
+              }
+            : item
+        )
+      );
+      setStudents((previous) =>
+        previous.map((student) =>
+          student.id === selectedStudent.id
+            ? {
+                ...student,
+                parentCount: Math.max(
+                  0,
+                  Number(student.parentCount || 0) - 1
+                ),
+              }
+            : student
+        )
+      );
+      setStudentActionMessage(
+        response.message || "Parent unlinked from student successfully."
+      );
+      setUnlinkingParent(null);
+    } catch (requestError) {
+      setCreateParentError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to unlink the parent from this student. Please try again."
+      );
+    } finally {
+      setCreatingParent(false);
+    }
   };
 
   /* ============================================================
@@ -823,8 +755,9 @@ export default function StudentManagement() {
 
   const downloadCsvTemplate = () => {
     const csv =
-      "firstName,surName,admissionNumber,gender,dateOfBirth,currentClass,currentArm,enrollmentDate,email,phoneNumber\n" +
-      ",,,,,,,,,\n";
+      "firstName,surName,admissionNumber,gender,dateOfBirth,classLevel,arm,enrollmentDate\n" +
+      "Amina,Abubakar,SN-2026-001,FEMALE,2014-05-12,JSS 1,A,2026-09-01\n" +
+      "Musa,Ibrahim,SN-2026-002,MALE,2013-11-03,JSS 2,B,2026-09-01\n";
 
     const blob = new Blob([csv], {
       type: "text/csv;charset=utf-8;",
@@ -843,22 +776,54 @@ export default function StudentManagement() {
     URL.revokeObjectURL(url);
   };
 
-  const handleCsvSelect = (event) => {
+  const handleCsvSelect = async (event) => {
     const file = event.target.files?.[0];
-
+    event.target.value = "";
     if (!file) return;
 
-    console.log("Selected student CSV:", file);
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (extension !== "csv" && extension !== "xlsx") {
+      setStudentImportError("Choose a .csv or .xlsx file to import students.");
+      setStudentImportResult(null);
+      setShowCsvModal(true);
+      return;
+    }
 
-    /*
-      Backend CSV parsing/import will be connected later.
+    setStudentImportError("");
+    setStudentImportResult(null);
+    setStudentImportLoading(true);
+    setShowCsvModal(true);
+    try {
+      const students = await parseStudentImportFile(file, extension);
+      const response = await importStudents({
+        students: students.map((student) => ({
+          ...student,
+          classLevel: student.classLevel.trim(),
+        })),
+      });
+      const data = response?.data;
+      if (!Array.isArray(data?.students) || typeof data.totalImported !== "number") {
+        throw new Error(
+          response?.message || "The server returned an invalid student import response."
+        );
+      }
 
-      Parent information is intentionally NOT included in the
-      student CSV. Parent relationships are handled separately
-      because one parent can have multiple students.
-    */
-
-    event.target.value = "";
+      setStudentImportResult(response);
+      setStudentActionMessage(response.message || "Students imported successfully.");
+      setStudentsPage(1);
+      setStudentsRefreshKey((previous) => previous + 1);
+    } catch (requestError) {
+      setStudentImportError(
+        requestError?.response?.data?.message ||
+          (requestError?.code === "ECONNABORTED" || requestError?.code === "ETIMEDOUT"
+            ? "The student import timed out. Check the student directory before retrying, as the server may have completed the import."
+            : null) ||
+          requestError?.message ||
+          "Unable to import students. Check the file and try again."
+      );
+    } finally {
+      setStudentImportLoading(false);
+    }
   };
 
   /* ============================================================
@@ -902,15 +867,6 @@ export default function StudentManagement() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setShowCsvModal(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/15"
-              >
-                <Upload size={18} />
-                Import CSV
-              </button>
-
               {currentPermissions.canCreate && (
                 <button
                   type="button"
@@ -921,6 +877,19 @@ export default function StudentManagement() {
                   Add student
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentImportError("");
+                  setStudentImportResult(null);
+                  setShowCsvModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/15"
+              >
+                <FileSpreadsheet size={18} />
+                Import CSV / Excel
+              </button>
             </div>
           </div>
         </section>
@@ -960,25 +929,25 @@ export default function StudentManagement() {
           <SummaryCard
             icon={Users}
             label="Total students"
-            value={totalStudents}
+            value={summary.totalStudents}
           />
 
           <SummaryCard
             icon={UserCheck}
             label="Active students"
-            value={activeStudents}
+            value={summary.activeStudents}
             highlight
           />
 
           <SummaryCard
             icon={UserRound}
-            label="With parents"
+            label="With parents (page)"
             value={studentsWithParents}
           />
 
           <SummaryCard
             icon={UserPlus}
-            label="No parent linked"
+            label="No parent linked (page)"
             value={studentsWithoutParents}
           />
         </div>
@@ -1005,7 +974,10 @@ export default function StudentManagement() {
                 <input
                   type="text"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setStudentsPage(1);
+                  }}
                   placeholder="Search name or admission no."
                   className={`${inputClass} pl-10`}
                 />
@@ -1013,14 +985,28 @@ export default function StudentManagement() {
 
               <SelectFilter
                 value={classFilter}
-                onChange={setClassFilter}
-                options={["ALL", ...classes]}
+                onChange={(value) => {
+                  setClassFilter(value);
+                  setStudentsPage(1);
+                }}
+                options={[
+                  "ALL",
+                  ...configuredClasses.map((item) => ({
+                    value: item.id,
+                    label: item.arm
+                      ? `${item.classLevel} ${item.arm}`
+                      : item.classLevel,
+                  })),
+                ]}
                 allLabel="All classes"
               />
 
               <SelectFilter
                 value={genderFilter}
-                onChange={setGenderFilter}
+                onChange={(value) => {
+                  setGenderFilter(value);
+                  setStudentsPage(1);
+                }}
                 options={["ALL", "MALE", "FEMALE"]}
                 allLabel="All genders"
                 formatter={formatGender}
@@ -1028,7 +1014,10 @@ export default function StudentManagement() {
 
               <SelectFilter
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(value) => {
+                  setStatusFilter(value);
+                  setStudentsPage(1);
+                }}
                 options={[
                   "ALL",
                   "ACTIVE",
@@ -1064,20 +1053,28 @@ export default function StudentManagement() {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.length === 0 ? (
+                {students.length === 0 ? (
                   <tr>
                     <td colSpan={9}>
-                      <EmptyState />
+                      {studentsLoading || studentsError ? (
+                        <DirectoryStatus
+                          loading={studentsLoading}
+                          error={studentsError}
+                          onRetry={() =>
+                            setStudentsRefreshKey((previous) => previous + 1)
+                          }
+                        />
+                      ) : (
+                        <EmptyState />
+                      )}
                     </td>
                   </tr>
                 ) : (
-                  filteredStudents.map((student) => (
+                  students.map((student) => (
                     <StudentRow
                       key={student.id}
                       student={student}
-                      parentCount={
-                        getStudentParents(student.id).length
-                      }
+                      parentCount={student.parentCount ?? 0}
                       menu={menu}
                       setMenu={setMenu}
                       copied={copied}
@@ -1095,16 +1092,24 @@ export default function StudentManagement() {
 
           {/* Mobile */}
           <div className="divide-y divide-slate-100 md:hidden">
-            {filteredStudents.length === 0 ? (
-              <EmptyState />
+            {students.length === 0 ? (
+              studentsLoading || studentsError ? (
+                <DirectoryStatus
+                  loading={studentsLoading}
+                  error={studentsError}
+                  onRetry={() =>
+                    setStudentsRefreshKey((previous) => previous + 1)
+                  }
+                />
+              ) : (
+                <EmptyState />
+              )
             ) : (
-              filteredStudents.map((student) => (
+              students.map((student) => (
                 <MobileStudentCard
                   key={student.id}
                   student={student}
-                  parentCount={
-                    getStudentParents(student.id).length
-                  }
+                  parentCount={student.parentCount ?? 0}
                   menu={menu}
                   setMenu={setMenu}
                   copied={copied}
@@ -1118,16 +1123,62 @@ export default function StudentManagement() {
             )}
           </div>
 
-          <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 sm:px-5">
-            Showing{" "}
-            <span className="font-semibold text-slate-700">
-              {filteredStudents.length}
-            </span>{" "}
-            of{" "}
-            <span className="font-semibold text-slate-700">
-              {students.length}
-            </span>{" "}
-            students
+          {studentsError && students.length > 0 && (
+            <div role="alert" className="flex items-center justify-between gap-3 border-t border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:px-5">
+              <span>{studentsError}</span>
+              <button
+                type="button"
+                disabled={studentsLoading}
+                onClick={() =>
+                  setStudentsRefreshKey((previous) => previous + 1)
+                }
+                className="font-semibold underline disabled:opacity-50"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <span>
+              Showing{" "}
+              <span className="font-semibold text-slate-700">
+                {pagination.totalItems === 0
+                  ? 0
+                  : (pagination.currentPage - 1) * pagination.pageSize + 1}
+                {"–"}
+                {Math.min(
+                  pagination.currentPage * pagination.pageSize,
+                  pagination.totalItems,
+                )}
+              </span>{" "}
+              of{" "}
+              <span className="font-semibold text-slate-700">
+                {pagination.totalItems}
+              </span>{" "}
+              students
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage || studentsLoading}
+                onClick={() => setStudentsPage((page) => Math.max(1, page - 1))}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-1">
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage || studentsLoading}
+                onClick={() => setStudentsPage((page) => page + 1)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </section>
       </div>
@@ -1178,30 +1229,66 @@ export default function StudentManagement() {
         <ParentLinkModal
           student={selectedStudent}
           parents={parents}
+          parentsLoading={parentsLoading}
+          parentsError={parentsError}
+          onRetryParents={() =>
+            setParentsRefreshKey((previous) => previous + 1)
+          }
           linkedParents={getStudentParents(selectedStudent.id)}
           parentSearch={parentSearch}
           setParentSearch={setParentSearch}
           onClose={closeParentModal}
           onLinkExisting={linkExistingParent}
           onCreateAndLink={createAndLinkParent}
+          creatingParent={creatingParent}
+          createParentError={createParentError}
+          onClearCreateParentError={() => setCreateParentError("")}
           onUnlink={unlinkParent}
           getParentStudentCount={getParentStudentCount}
         />
       )}
 
+      {unlinkingParent && selectedStudent && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="unlink-parent-title"
+            aria-describedby="unlink-parent-description"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+              <Unlink size={20} />
+            </div>
+            <h2 id="unlink-parent-title" className="mt-4 text-lg font-bold text-slate-900">Unlink parent from student?</h2>
+            <p id="unlink-parent-description" className="mt-2 text-sm leading-6 text-slate-600">
+              This will remove {unlinkingParent.firstName} {unlinkingParent.surName}'s connection to {selectedStudent.firstName} {selectedStudent.surName}. The parent account will not be deleted.
+            </p>
+            {createParentError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{createParentError}</p>}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" disabled={creatingParent} onClick={() => { setUnlinkingParent(null); setCreateParentError(""); }} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={creatingParent} onClick={confirmUnlinkParent} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">{creatingParent && <Loader2 size={15} className="animate-spin" />}{creatingParent ? "Unlinking…" : "Unlink parent"}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* CSV modal */}
       {showCsvModal && (
         <CsvImportModal
-          onClose={() => setShowCsvModal(false)}
+          onClose={() => { if (!studentImportLoading) setShowCsvModal(false); }}
           onDownloadTemplate={downloadCsvTemplate}
           onChooseFile={() => csvInputRef.current?.click()}
+          loading={studentImportLoading}
+          error={studentImportError}
+          result={studentImportResult}
         />
       )}
 
       <input
         ref={csvInputRef}
         type="file"
-        accept=".csv,text/csv"
+        accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         onChange={handleCsvSelect}
         className="hidden"
       />
@@ -1904,7 +1991,11 @@ function StudentModal({
                   required
                   value={form.currentClass}
                   onChange={(value) => onChange("currentClass", value)}
-                  options={classes.map((item) => [item, item])}
+                  options={[
+                    ...new Set(
+                      configuredClasses.map((item) => item.classLevel)
+                    ),
+                  ].map((classLevel) => [classLevel, classLevel])}
                   placeholder="Select class"
                 />
 
@@ -2036,12 +2127,18 @@ function StudentModal({
 function ParentLinkModal({
   student,
   parents,
+  parentsLoading,
+  parentsError,
+  onRetryParents,
   linkedParents,
   parentSearch,
   setParentSearch,
   onClose,
   onLinkExisting,
   onCreateAndLink,
+  creatingParent,
+  createParentError,
+  onClearCreateParentError,
   onUnlink,
   getParentStudentCount,
 }) {
@@ -2088,12 +2185,14 @@ function ParentLinkModal({
     if (
       !newParent.firstName.trim() ||
       !newParent.surName.trim() ||
-      !newParent.phoneNumber.trim()
+      !newParent.phoneNumber.trim() ||
+      !newParent.email.trim()
     ) {
+      onClearCreateParentError();
       return;
     }
 
-    onCreateAndLink({
+    void onCreateAndLink({
       ...newParent,
       relationship,
     });
@@ -2140,7 +2239,26 @@ function ParentLinkModal({
             </span>
           </div>
 
-          {linkedParents.length === 0 ? (
+          {parentsLoading && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              <Loader2 size={16} className="animate-spin text-[#0A2463]" />
+              Loading parent records…
+            </div>
+          )}
+          {parentsError && (
+            <div role="alert" className="mt-3 flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+              <span>{parentsError}</span>
+              <button
+                type="button"
+                onClick={onRetryParents}
+                className="shrink-0 font-semibold underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {parentsLoading || parentsError ? null : linkedParents.length === 0 ? (
             <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
               <Users
                 size={21}
@@ -2204,11 +2322,16 @@ function ParentLinkModal({
 
                   <button
                     type="button"
-                    onClick={() => onUnlink(parent.linkId)}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                    disabled={creatingParent}
+                    onClick={() => onUnlink(parent)}
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Unlink size={14} />
-                    Unlink
+                    {creatingParent ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Unlink size={14} />
+                    )}
+                    {creatingParent ? "Working…" : "Unlink"}
                   </button>
                 </div>
               ))}
@@ -2299,7 +2422,17 @@ function ParentLinkModal({
                 </label>
               </div>
 
-              {availableParents.length === 0 ? (
+              {parentsLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl bg-slate-50 p-6 text-sm text-slate-600">
+                  <Loader2 size={17} className="animate-spin text-[#0A2463]" />
+                  Loading parent records…
+                </div>
+              ) : parentsError ? (
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  <p>{parentsError}</p>
+                  <button type="button" onClick={onRetryParents} className="mt-2 font-semibold underline">Retry loading parents</button>
+                </div>
+              ) : availableParents.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
                   <UserRound
                     size={20}
@@ -2355,19 +2488,27 @@ function ParentLinkModal({
 
                       <button
                         type="button"
-                        onClick={() =>
-                          onLinkExisting(
-                            parent,
-                            relationship
-                          )
-                        }
-                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#071A52]"
+                        disabled={creatingParent}
+                        onClick={() => onLinkExisting(parent, relationship)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#071A52] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <Link2 size={14} />
-                        Link
+                        {creatingParent ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Link2 size={14} />
+                        )}
+                        {creatingParent ? "Linking…" : "Link"}
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {createParentError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+                >
+                  {createParentError}
                 </div>
               )}
             </div>
@@ -2381,12 +2522,13 @@ function ParentLinkModal({
                   label="First name"
                   required
                   value={newParent.firstName}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    onClearCreateParentError();
                     setNewParent((previous) => ({
                       ...previous,
                       firstName: value,
-                    }))
-                  }
+                    }));
+                  }}
                   placeholder="e.g. Musa"
                 />
 
@@ -2394,12 +2536,13 @@ function ParentLinkModal({
                   label="Surname"
                   required
                   value={newParent.surName}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    onClearCreateParentError();
                     setNewParent((previous) => ({
                       ...previous,
                       surName: value,
-                    }))
-                  }
+                    }));
+                  }}
                   placeholder="e.g. Ibrahim"
                 />
 
@@ -2407,26 +2550,29 @@ function ParentLinkModal({
                   label="Phone number"
                   required
                   value={newParent.phoneNumber}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    onClearCreateParentError();
                     setNewParent((previous) => ({
                       ...previous,
                       phoneNumber: value,
-                    }))
-                  }
+                    }));
+                  }}
                   placeholder="08012345678"
                 />
 
                 <Field
                   label="Email"
                   type="email"
+                  required
                   value={newParent.email}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    onClearCreateParentError();
                     setNewParent((previous) => ({
                       ...previous,
                       email: value,
-                    }))
-                  }
-                  placeholder="Optional"
+                    }));
+                  }}
+                  placeholder="parent@example.com"
                 />
               </div>
 
@@ -2434,7 +2580,10 @@ function ParentLinkModal({
                 label="Relationship"
                 required
                 value={relationship}
-                onChange={setRelationship}
+                onChange={(value) => {
+                  onClearCreateParentError();
+                  setRelationship(value);
+                }}
                 options={relationshipOptions}
               />
 
@@ -2444,18 +2593,34 @@ function ParentLinkModal({
               >
                 <p>
                   The parent's phone number will be used as their
-                  login ID. Email is optional and can be used for
-                  account communication when available.
+                  login ID. Their email is required for account
+                  invitations and school communication.
                 </p>
               </InfoBox>
+
+              {createParentError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+                >
+                  {createParentError}
+                </div>
+              )}
 
               <div className="flex justify-end border-t border-slate-200 pt-4">
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#071A52]"
+                  disabled={creatingParent}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#071A52] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <UserPlus size={17} />
-                  Create and link parent
+                  {creatingParent ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <UserPlus size={17} />
+                  )}
+                  {creatingParent
+                    ? "Creating parent…"
+                    : "Create and link parent"}
                 </button>
               </div>
             </form>
@@ -2484,150 +2649,183 @@ function CsvImportModal({
   onClose,
   onDownloadTemplate,
   onChooseFile,
+  loading,
+  error,
+  result,
 }) {
+  const requiredColumns = [
+    "firstName",
+    "surName",
+    "admissionNumber",
+    "gender",
+    "classLevel",
+  ];
+  const optionalColumns = ["dateOfBirth", "arm", "enrollmentDate"];
+  const resultData = result?.data || {};
+
   return (
-    <ModalShell
-      title="Import students from CSV"
-      description="Add many student records at once using a CSV file."
-      onClose={onClose}
-      width="max-w-2xl"
-    >
-      <div className="space-y-5">
-        <InfoBox
-          icon={<FileSpreadsheet size={18} />}
-          title="How CSV import works"
+    <ModalShell onClose={onClose} hideHeader width="max-w-4xl">
+      <div className="mb-1 flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          aria-label="Close student import dialog"
+          className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <p>
-            CSV import saves time when adding many students. Instead
-            of completing the student form one person at a time, you
-            can prepare your entire student list in Excel, Google
-            Sheets, or another spreadsheet app, then save or export
-            the spreadsheet as a CSV file and upload it here.
-          </p>
-        </InfoBox>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <CsvStep
-            number="1"
-            title="Prepare"
-            description="Enter your student records in a spreadsheet."
-          />
-
-          <CsvStep
-            number="2"
-            title="Save as CSV"
-            description="Export or save the spreadsheet as a CSV file."
-          />
-
-          <CsvStep
-            number="3"
-            title="Upload"
-            description="Upload the CSV file to ScholaNode."
-          />
+          <X size={19} />
+        </button>
+      </div>
+      <div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-[#071A52]">
+          <FileSpreadsheet size={24} />
         </div>
+        <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-600">
+          Bulk student enrollment
+        </p>
+        <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">
+          Import students from CSV or Excel
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Add multiple student records at once using a CSV file or Excel
+          workbook (.xlsx). Excel imports use the first worksheet.
+        </p>
+      </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-[#071A52]">
-            Student columns
-          </h3>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[
-              "firstName",
-              "surName",
-              "admissionNumber",
-              "gender",
-              "dateOfBirth",
-              "currentClass",
-              "currentArm",
-              "enrollmentDate",
-              "email",
-              "phoneNumber",
-            ].map((column) => (
-              <span
-                key={column}
-                className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-slate-700"
-              >
-                {column}
-              </span>
-            ))}
+      <div className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-600 shadow-sm">
+            <Users size={17} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-cyan-900">Import student records</p>
+            <p className="mt-2 text-sm leading-6 text-cyan-800">
+              Prepare student details using the template. Class level is
+              required for every student. No invitation email is sent; each
+              admission number is used as the student's initial password.
+            </p>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-semibold">
-            Important
-          </p>
-
-          <p className="mt-1 leading-6">
-            CSV is the upload format used by ScholaNode. Excel,
-            Google Sheets, and other spreadsheet applications are
-            tools you can use to prepare the data.
-          </p>
-
-          <p className="mt-2 leading-6">
-            Admission numbers must be unique within the school.
-            Student login IDs are created from those admission
-            numbers automatically.
-          </p>
-
-          <p className="mt-2 leading-6">
-            Parent information is not included in the student CSV.
-            Parent relationships are managed separately because one
-            parent can have multiple students.
-          </p>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+        <p className="text-sm font-bold text-[#071A52]">How file import works</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <CsvStep number="1" title="Prepare" description="Fill in student details using our template." />
+          <CsvStep number="2" title="Save the file" description="Save as .csv or .xlsx. Only the first Excel worksheet is imported." />
+          <CsvStep number="3" title="Upload" description="Choose the completed CSV or Excel file." />
         </div>
+      </div>
 
-        <div className="rounded-2xl border border-[#0A2463]/10 bg-[#0A2463]/5 p-4">
-          <div className="flex items-start gap-3">
-            <ShieldCheck
-              size={19}
-              className="mt-0.5 shrink-0 text-[#0A2463]"
-            />
-
-            <div>
-              <p className="text-sm font-semibold text-[#071A52]">
-                Safe bulk import
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-slate-600">
-                ScholaNode should validate the complete CSV before
-                creating student records. If the file contains
-                invalid or duplicate records, the import should fail
-                without creating a partial batch.
-              </p>
-            </div>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#071A52]">Start with our student template</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              The template contains the supported student columns, including
+              required classLevel, and two example records. Replace the
+              examples with real student details.
+            </p>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-between">
           <button
             type="button"
             onClick={onDownloadTemplate}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-bold text-[#071A52] transition hover:bg-cyan-50"
           >
-            <Download size={17} />
-            Download CSV template
+            <FileSpreadsheet size={16} />
+            Download template
           </button>
+        </div>
+      </div>
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={onClose}
-              className={secondaryButton}
-            >
-              Cancel
-            </button>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+        <p className="text-sm font-bold text-[#071A52]">Student file columns</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Required columns:
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {requiredColumns.map((field) => (
+            <span key={field} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200">{field}</span>
+          ))}
+        </div>
+        <p className="mt-4 text-sm leading-6 text-slate-500">
+          Optional columns:
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {optionalColumns.map((field) => (
+            <span key={field} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200">{field}</span>
+          ))}
+        </div>
+        <div className="mt-5 flex items-start gap-2.5 rounded-xl bg-emerald-50 p-3">
+          <ShieldCheck size={17} className="mt-0.5 shrink-0 text-emerald-600" />
+          <p className="text-xs leading-5 text-emerald-800">
+            <strong>Initial password:</strong> each student's admission number.
+            Students must change it after signing in. Class assignment uses
+            the human-readable class level and optional arm, not a class ID.
+          </p>
+        </div>
+      </div>
 
-            <button
-              type="button"
-              onClick={onChooseFile}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#071A52]"
-            >
-              <Upload size={17} />
-              Choose CSV file
-            </button>
-          </div>
+      <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+        <div className="flex items-start gap-2.5">
+          <FileSpreadsheet size={17} className="mt-0.5 shrink-0 text-amber-600" />
+          <p className="text-xs leading-5 text-amber-800">
+            <strong>Both CSV and .xlsx files are accepted.</strong> Excel
+            workbooks are read from the first worksheet. Empty rows are
+            ignored; all non-empty rows must pass validation before import.
+            Class level is required. Date values should use the ISO format YYYY-MM-DD.
+          </p>
+        </div>
+      </div>
+
+      {(loading || error || result) && (
+        <div className="mt-6 scroll-mb-6" aria-live="polite">
+          {loading && (
+            <div role="status" className="flex items-center gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-semibold text-cyan-900">
+              <Loader2 size={18} className="animate-spin" />
+              Validating the file and importing students…
+            </div>
+          )}
+          {error && (
+            <p role="alert" className="whitespace-pre-line rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-5 text-rose-700">{error}</p>
+          )}
+          {result && (
+            <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <p className="font-bold">{result.message || "Students imported successfully."}</p>
+              <p className="mt-2">Imported: {Number(resultData.totalImported) || 0}</p>
+              {resultData.initialPasswordRule && <p className="mt-2">{resultData.initialPasswordRule}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          onClick={onDownloadTemplate}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <FileSpreadsheet size={16} />
+          Download CSV template
+        </button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {result ? "Close" : "Cancel"}
+          </button>
+          <button
+            type="button"
+            onClick={onChooseFile}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+            {loading ? "Importing…" : result ? "Import another file" : "Choose CSV or Excel file"}
+          </button>
         </div>
       </div>
     </ModalShell>
@@ -2898,10 +3096,13 @@ function SelectFilter({
         )}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option === "ALL"
-              ? allLabel
-              : formatter(option)}
+          <option
+            key={typeof option === "string" ? option : option.value}
+            value={typeof option === "string" ? option : option.value}
+          >
+            {typeof option === "string"
+              ? (option === "ALL" ? allLabel : formatter(option))
+              : option.label}
           </option>
         ))}
       </select>
@@ -2951,37 +3152,209 @@ function EmptyState() {
   );
 }
 
+function DirectoryStatus({ loading, error, onRetry }) {
+  if (loading) {
+    return (
+      <div className="flex min-h-[260px] flex-col items-center justify-center px-5 py-10 text-center">
+        <Loader2 size={24} className="animate-spin text-[#0A2463]" />
+        <p className="mt-3 text-sm font-semibold text-slate-700">
+          Loading students…
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div role="alert" className="flex min-h-[260px] flex-col items-center justify-center px-5 py-10 text-center">
+      <p className="text-sm font-semibold text-rose-700">
+        {error || "Unable to load students."}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-lg bg-[#0A2463] px-4 py-2 text-sm font-semibold text-white hover:bg-[#071A52]"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+const studentImportColumns = [
+  "firstName",
+  "surName",
+  "admissionNumber",
+  "gender",
+  "dateOfBirth",
+  "classLevel",
+  "arm",
+  "enrollmentDate",
+];
+
+const requiredStudentImportColumns = [
+  "firstName",
+  "surName",
+  "admissionNumber",
+  "gender",
+  "classLevel",
+];
+
+async function parseStudentImportFile(file, extension) {
+  const XLSX = await import("@e965/xlsx");
+  const fileContent = extension === "csv" ? await file.text() : await file.arrayBuffer();
+  const workbook = XLSX.read(fileContent, {
+    type: extension === "csv" ? "string" : "array",
+    raw: false,
+    cellDates: false,
+  });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) {
+    throw new Error("The selected file does not contain a worksheet.");
+  }
+
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
+    header: 1,
+    defval: "",
+    blankrows: true,
+    raw: false,
+  });
+  const headerRowIndex = rows.findIndex((row) =>
+    row.some((cell) => String(cell ?? "").trim() !== "")
+  );
+  if (headerRowIndex < 0) {
+    throw new Error("The selected file is empty. Add the required column headers and student records.");
+  }
+
+  const headers = rows[headerRowIndex].map((cell, index) => {
+    const value = String(cell ?? "").trim();
+    return index === 0 ? value.replace(/^\uFEFF/, "") : value;
+  });
+  const unknownHeaders = headers.filter(
+    (header) => header && !studentImportColumns.includes(header)
+  );
+  const duplicateHeaders = studentImportColumns.filter(
+    (header) => headers.filter((value) => value === header).length > 1
+  );
+  const missingHeaders = requiredStudentImportColumns.filter(
+    (header) => !headers.includes(header)
+  );
+  const headerErrors = [
+    ...missingHeaders.map((header) => `Missing required column "${header}".`),
+    ...duplicateHeaders.map((header) => `Column "${header}" appears more than once.`),
+    ...(unknownHeaders.length
+      ? [`Unsupported column${unknownHeaders.length === 1 ? "" : "s"}: ${unknownHeaders.join(", ")}.`]
+      : []),
+  ];
+  if (headerErrors.length) throw new Error(headerErrors.join("\n"));
+
+  const columnIndexes = Object.fromEntries(
+    studentImportColumns.map((column) => [column, headers.indexOf(column)])
+  );
+  const recordRows = rows
+    .slice(headerRowIndex + 1)
+    .map((row, index) => ({ row, rowNumber: headerRowIndex + index + 2 }))
+    .filter(({ row }) => row.some((cell) => String(cell ?? "").trim() !== ""));
+  if (!recordRows.length) {
+    throw new Error("The selected file contains headers but no student records.");
+  }
+
+  const admissionNumbers = new Set();
+  const errors = [];
+  const students = recordRows.map(({ row, rowNumber }) => {
+    const student = Object.fromEntries(
+      studentImportColumns
+        .filter((column) => columnIndexes[column] >= 0)
+        .map((column) => [
+          column,
+          String(row[columnIndexes[column]] ?? "").trim(),
+        ])
+    );
+    student.admissionNumber = student.admissionNumber.toUpperCase();
+    student.gender = student.gender.toUpperCase();
+
+    if (student.firstName.length < 2 || student.firstName.length > 50) {
+      errors.push(`Row ${rowNumber}: firstName must contain 2–50 characters.`);
+    }
+    if (student.surName.length < 2 || student.surName.length > 50) {
+      errors.push(`Row ${rowNumber}: surName must contain 2–50 characters.`);
+    }
+    if (!student.admissionNumber || student.admissionNumber.length > 30) {
+      errors.push(`Row ${rowNumber}: admissionNumber is required and must be at most 30 characters.`);
+    } else if (admissionNumbers.has(student.admissionNumber)) {
+      errors.push(`Row ${rowNumber}: admissionNumber "${student.admissionNumber}" is repeated in this file.`);
+    }
+    admissionNumbers.add(student.admissionNumber);
+    if (!["MALE", "FEMALE"].includes(student.gender)) {
+      errors.push(`Row ${rowNumber}: gender must be MALE or FEMALE.`);
+    }
+    if (student.dateOfBirth && !isIsoDate(student.dateOfBirth)) {
+      errors.push(`Row ${rowNumber}: dateOfBirth must use YYYY-MM-DD format.`);
+    } else if (student.dateOfBirth && new Date(`${student.dateOfBirth}T00:00:00`) > new Date()) {
+      errors.push(`Row ${rowNumber}: dateOfBirth cannot be in the future.`);
+    }
+    if (!student.classLevel || student.classLevel.length > 50) {
+      errors.push(`Row ${rowNumber}: classLevel is required and must contain 1–50 characters.`);
+    }
+    if (student.arm && student.arm.length > 30) {
+      errors.push(`Row ${rowNumber}: arm must be at most 30 characters.`);
+    }
+    if (student.enrollmentDate && !isIsoDate(student.enrollmentDate)) {
+      errors.push(`Row ${rowNumber}: enrollmentDate must use YYYY-MM-DD format.`);
+    }
+    return student;
+  });
+
+  if (errors.length) {
+    const displayedErrors = errors.slice(0, 20);
+    if (errors.length > displayedErrors.length) {
+      displayedErrors.push(`…and ${errors.length - displayedErrors.length} more validation issue${errors.length - displayedErrors.length === 1 ? "" : "s"}.`);
+    }
+    throw new Error(displayedErrors.join("\n"));
+  }
+
+  return students;
+}
+
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 function ModalShell({
   title,
   description,
   onClose,
   children,
   width = "max-w-xl",
+  hideHeader = false,
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#071A52]/60 p-4 backdrop-blur-[2px]">
       <div
         className={`my-8 w-full overflow-hidden rounded-3xl bg-white shadow-2xl ${width}`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 className="text-lg font-bold text-[#071A52]">
-              {title}
-            </h2>
+        {!hideHeader && (
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+            <div>
+              <h2 className="text-lg font-bold text-[#071A52]">
+                {title}
+              </h2>
 
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              {description}
-            </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {description}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X size={18} />
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X size={18} />
-          </button>
-        </div>
+        )}
 
         <div className="max-h-[calc(100vh-180px)] overflow-y-auto p-5 sm:p-6">
           {children}
@@ -3086,48 +3459,4 @@ function extractConfiguredClasses(response) {
       arm: item.arm || null,
     }))
     .filter((item) => item.id && item.classLevel);
-}
-
-function loadStudents() {
-  try {
-    const saved = localStorage.getItem(storageKey);
-
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Fall back to starter data.
-  }
-
-  return starterStudents;
-}
-
-function loadParents() {
-  try {
-    const saved = localStorage.getItem(parentsStorageKey);
-
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Fall back to starter data.
-  }
-
-  return starterParents;
-}
-
-function loadParentLinks() {
-  try {
-    const saved = localStorage.getItem(
-      parentLinksStorageKey
-    );
-
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Fall back to starter data.
-  }
-
-  return starterParentLinks;
 }

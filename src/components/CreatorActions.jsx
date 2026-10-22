@@ -16,7 +16,7 @@ import { getAcademicProgress } from '../pages/academic/academicSetupApi';
 
 const initialProgress = {
   percentage: 0,
-  steps: { sessions: false, classes: false, subjects: false },
+  steps: { sessions: false, classes: false, subjects: false, workingDays: false },
 };
 
 export default function CreatorActions() {
@@ -60,6 +60,7 @@ export default function CreatorActions() {
     { label: 'Sessions and terms', complete: progress.steps.sessions },
     { label: 'Classes and arms', complete: progress.steps.classes },
     { label: 'Subjects', complete: progress.steps.subjects },
+    { label: 'Working days', complete: progress.steps.workingDays },
   ];
   const completedSteps = steps.filter((step) => step.complete).length;
   const setupComplete = completedSteps === steps.length;
@@ -230,6 +231,7 @@ function normalizeProgress(response) {
       sessions: backendSteps.sessionsAndTerms === true,
       classes: backendSteps.classesAndArms === true,
       subjects: backendSteps.subjects === true,
+      workingDays: backendSteps.workingDays === true,
     },
   };
 }

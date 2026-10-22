@@ -67,15 +67,15 @@ export default function SchoolLoginPage({ onBack }) {
       console.log('Login success response:', response.data);
 
       const token = response.data?.accessToken;
-      const user = response.data?.data || response.data?.user || { loginId: trimmedLoginId };
+      const authPayload = response.data?.user ? response.data : { user, school: response.data?.school || school };
 
       if (token) {
-        login(token, user);
+        login(token, authPayload);
       } else {
         localStorage.setItem('accessToken', '');
       }
 
-      navigate('/private/dashboard', { state: { school, user } });
+      navigate('/private/dashboard', { state: { school, user: authPayload.user || user } });
     } catch (error) {
       console.error('Login request failed:', {
         payload: {

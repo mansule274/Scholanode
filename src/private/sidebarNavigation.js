@@ -10,22 +10,66 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquareText,
+  Settings2,
   ShieldCheck,
   Sparkles,
   User,
+  UserRound,
   Users,
+  AlertCircle,
+  ClipboardCheck,
+  History,
+  Megaphone,
 } from 'lucide-react';
 import { normalizeRole, ROLES } from '../utils/roles';
 
 const administratorRoles = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR];
 
+const studentNavigation = [
+  {
+    title: 'Overview',
+    tone: 'blue',
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'My Profile', icon: User, path: '/profile' },
+    ],
+  },
+  {
+    title: 'Academic',
+    tone: 'violet',
+    items: [
+      { label: 'My Subjects', icon: BookOpen, path: '/student-subjects' },
+      { label: 'My Attendance', icon: ClipboardCheck, path: '/student-attendance' },
+      { label: 'My Results', icon: FileText, path: '/student-results' },
+    ],
+  },
+  {
+    title: 'School',
+    tone: 'cyan',
+    items: [
+      { label: 'Announcements', icon: Megaphone, path: '/student-announcements' },
+      { label: 'Complaints', icon: AlertCircle, path: '/student-complaints' },
+    ],
+  },
+  {
+    title: 'Account',
+    tone: 'slate',
+    items: [
+      { label: 'School Profile', icon: Building2, path: '/school-profile' },
+      { label: 'Settings', icon: Settings2, path: '/settings' },
+      { label: 'Logout', icon: LogOut, path: '/private/logout', isLogout: true },
+    ],
+  },
+];
 
 const navigation = [
   {
     title: 'Overview',
     tone: 'blue',
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'My Profile', icon: User, path: '/profile' },
+      { label: 'My Class', icon: GraduationCap, path: '/my-class', requiresFormMaster: true },
     ],
   },
   {
@@ -34,6 +78,7 @@ const navigation = [
     items: [
       { label: 'Students', icon: Users, path: '/students', allowedRoles: administratorRoles },
       { label: 'Staff', icon: User, path: '/staff', allowedRoles: administratorRoles },
+      { label: 'Parents', icon: UserRound, path: '/parents', allowedRoles: administratorRoles },
     ],
   },
   {
@@ -51,7 +96,10 @@ const navigation = [
     title: 'Operations',
     tone: 'amber',
     items: [
-      { label: 'Attendance', icon: ShieldCheck, path: '/private/attendance', allowedRoles: [ROLES.SECURITY, ROLES.ADMINISTRATOR] },
+      { label: 'Gate Access', icon: ShieldCheck, path: '/gate-access', allowedRoles: administratorRoles },
+      { label: 'Verify Student', icon: ShieldCheck, path: '/verify-student', allowedRoles: [ROLES.SECURITY] },
+      { label: 'Scan History', icon: History, path: '/scan-history', allowedRoles: [ROLES.SECURITY] },
+      { label: 'Attendance', icon: ShieldCheck, path: '/attendance', requiresFormMaster: true },
       { label: 'Payments', icon: CreditCard, path: '/payment', allowedRoles: administratorRoles },
       { label: 'Messages', icon: MessageSquareText, path: '/private/messages', allowedRoles: administratorRoles },
     ],
@@ -61,7 +109,7 @@ const navigation = [
     tone: 'slate',
     items: [
       { label: 'School Profile', icon: Building2, path: '/school-profile' },
-      { label: 'Security', icon: ShieldCheck, path: '/private/security' },
+      { label: 'Settings', icon: Settings2, path: '/settings' },
       { label: 'Notifications', icon: Bell, path: '/private/notifications' },
       { label: 'Refer & Earn', icon: Sparkles, path: '/refer-earn' },
       { label: 'Logout', icon: LogOut, path: '/private/logout', isLogout: true },
@@ -72,15 +120,28 @@ const navigation = [
 export function getSidebarSectionsForUser(user) {
   const role = normalizeRole(user?.role);
   const isLeaderOrVice = role === ROLES.LEADER || role === ROLES.VICE_LEADER;
+  const isFormMaster = Boolean(user?.isFormMaster);
+
+  if (role === ROLES.STUDENT) {
+    return studentNavigation;
+  }
 
   return navigation
     .map((section) => ({
       ...section,
-      items: section.items.filter(({ allowedRoles }) =>
-        !allowedRoles ||
-        isLeaderOrVice ||
-        allowedRoles.some((allowedRole) => normalizeRole(allowedRole) === role)
-      ),
+      items: section.items.filter((item) => {
+        if (item.requiresFormMaster && !isFormMaster) {
+          return false;
+        }
+
+        if (item.requiresFormMaster && isFormMaster) {
+          return true;
+        }
+
+        return !item.allowedRoles ||
+          isLeaderOrVice ||
+          item.allowedRoles.some((allowedRole) => normalizeRole(allowedRole) === role);
+      }),
     }))
     .filter((section) => section.items.length > 0);
 }

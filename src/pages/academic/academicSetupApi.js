@@ -72,6 +72,14 @@ export async function createAcademicSubjects(subjectsPayload) {
   }
 }
 
+export async function saveAcademicWorkingDays(days) {
+  const response = await privateAxiosInstance.post(
+    `${academicBasePath}/working-days`,
+    { days },
+  );
+  return response.data;
+}
+
 export async function createAcademicClass(classPayload) {
   const response = await privateAxiosInstance.post(`${academicBasePath}/class`, classPayload);
   return response.data;

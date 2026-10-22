@@ -251,6 +251,7 @@ export default function StaffManagement() {
         if (refreshed) setActionMessage(message);
         else setActionError(`${message} The staff list could not be refreshed; retry loading it.`);
       } catch (requestError) {
+        console.log(requestError?.response?.data || requestError);
         setModalError(requestError?.response?.data?.message || 'Unable to send the staff invitation.');
       } finally {
         setStatusActionId('');
@@ -1620,25 +1621,36 @@ function CsvImportModal({
         </div>
       )}
 
-      <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+      <div className="mt-6 flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
-          onClick={onClose}
-          disabled={loading}
-          className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
+          onClick={onDownloadTemplate}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
-          {result ? 'Close' : 'Cancel'}
+          <FileSpreadsheet size={16} />
+          Download CSV template
         </button>
 
-        <button
-          type="button"
-          onClick={onChooseFile}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
-          {loading ? 'Importing…' : result ? 'Import another file' : 'Choose CSV or Excel file'}
-        </button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {result ? 'Close' : 'Cancel'}
+          </button>
+
+          <button
+            type="button"
+            onClick={onChooseFile}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+            {loading ? 'Importing…' : result ? 'Import another file' : 'Choose CSV or Excel file'}
+          </button>
+        </div>
       </div>
     </ModalShell>
   );

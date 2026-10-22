@@ -25,11 +25,25 @@ const normalizeAuthResponse = (payload) => {
 };
 
 export const ContextProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [school, setSchool] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('scholanode_user_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [school, setSchool] = useState(() => {
+    try {
+      const cached = localStorage.getItem('scholanode_school_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [student, setStudent] = useState(null);
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('accessToken') || '');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => Boolean(localStorage.getItem('accessToken')) && !localStorage.getItem('scholanode_user_cache'));
   const [authError, setAuthError] = useState(null);
   const isAuthenticated = Boolean(accessToken);
 
@@ -42,6 +56,8 @@ export const ContextProvider = ({ children }) => {
     }
 
     setAccessToken('');
+    localStorage.removeItem('scholanode_user_cache');
+    localStorage.removeItem('scholanode_school_cache');
     setUser(null);
     setSchool(null);
     setStudent(null);
@@ -53,6 +69,18 @@ export const ContextProvider = ({ children }) => {
     setUser(profile.user);
     setSchool(profile.school);
     setStudent(profile.student);
+
+    try {
+      if (profile.user) {
+        localStorage.setItem('scholanode_user_cache', JSON.stringify(profile.user));
+      }
+      if (profile.school) {
+        localStorage.setItem('scholanode_school_cache', JSON.stringify(profile.school));
+      }
+    } catch {
+      // Storage unavailable or quota exceeded
+    }
+
     return profile;
   };
 
@@ -83,9 +111,14 @@ export const ContextProvider = ({ children }) => {
       setStudent(null);
       return null;
     } catch (error) {
-      setUser(null);
-      setSchool(null);
-      setStudent(null);
+      // Only clear cache if token is invalid (401)
+      if (error?.response?.status === 401) {
+        localStorage.removeItem('scholanode_user_cache');
+        localStorage.removeItem('scholanode_school_cache');
+        setUser(null);
+        setSchool(null);
+        setStudent(null);
+      }
       setAuthError(error?.response?.data?.message || 'Unable to load user profile.');
       console.log('Error:', error?.response?.data || error);
       return null;
@@ -106,9 +139,7 @@ export const ContextProvider = ({ children }) => {
 
     const normalizedProfile = normalizeAuthResponse(profile);
     if (normalizedProfile.user) {
-      setUser(normalizedProfile.user);
-      setSchool(normalizedProfile.school);
-      setStudent(normalizedProfile.student);
+      setAuthProfile(normalizedProfile);
       void fetchLoggedInUser();
       return normalizedProfile.user;
     }
@@ -118,8 +149,20 @@ export const ContextProvider = ({ children }) => {
     return { accessToken: safeToken };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const token = localStorage.getItem('accessToken');
+
+    if (token) {
+      try {
+        await privateAxiosInstance.post('/auths/log-out');
+      } catch (error) {
+        console.warn('Log out request failed; clearing local session anyway.', error?.response?.data || error);
+      }
+    }
+
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('scholanode_user_cache');
+    localStorage.removeItem('scholanode_school_cache');
     setAccessToken('');
     setUser(null);
     setSchool(null);

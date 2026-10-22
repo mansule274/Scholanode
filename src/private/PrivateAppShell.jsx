@@ -74,9 +74,12 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
 
   const initials = getInitials();
 
-  const handleLogout = () => {
-    if (logout) logout();
-    navigate('/school-login');
+  const handleLogout = async () => {
+    try {
+      if (logout) await logout();
+    } finally {
+      navigate('/', { replace: true });
+    }
   };
 
   const renderNavItems = (items) => {
