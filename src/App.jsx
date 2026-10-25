@@ -58,6 +58,7 @@ import ScanHistoryPage from './pages/attendance/ScanHistoryPage';
 // test veiw parent dashbord private
 import ParentDashboard from './pages/dashboard/ParentDashboard';
 import Complaint from './private/pages/Complaint';
+import HelpSupport from './private/pages/HelpSupport';
 
 
 function AppLoadingScreen() {
@@ -117,6 +118,7 @@ function PublicRoutes() {
       <Route path="/staff" element={<StaffManagement />} />
       <Route path="/students" element={<StudentManagement />} />
       <Route path="/parents" element={<ParentManagement />} />
+      <Route path="/help-support" element={<HelpSupport />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
