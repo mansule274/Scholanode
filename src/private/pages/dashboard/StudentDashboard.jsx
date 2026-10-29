@@ -377,7 +377,7 @@ const attendancePercentage = 92;
               </p>
 
               <Link
-                to="/student-announcements"
+                to="/announcements"
                 className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900"
               >
                 View announcements

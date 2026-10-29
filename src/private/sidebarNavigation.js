@@ -46,8 +46,8 @@ const studentNavigation = [
     title: 'School',
     tone: 'cyan',
     items: [
-      { label: 'Announcements', icon: Megaphone, path: '/student-announcements' },
-      { label: 'Complaints', icon: AlertCircle, path: '/student-complaints' },
+      { label: 'Announcements', icon: Megaphone, path: '/announcements' },
+      { label: 'Complaints', icon: AlertCircle, path: '/complaints' },
     ],
   },
   {
@@ -89,6 +89,19 @@ const navigation = [
       { label: 'Subjects', icon: BookOpen, path: '/subjects', allowedRoles: administratorRoles },
       { label: 'Sessions & Terms', icon: CalendarDays, path: '/sessions-terms', allowedRoles: administratorRoles },
       { label: 'Results', icon: FileText, path: '/results', allowedRoles: [ROLES.EXAM_OFFICER, ROLES.ADMINISTRATOR] },
+    ],
+  },
+  {
+    title: 'School',
+    tone: 'cyan',
+    items: [
+      { label: 'Announcements', icon: Megaphone, path: '/announcements' },
+      {
+        label: 'Complaints',
+        icon: AlertCircle,
+        path: '/complaints',
+        allowedRoles: [ROLES.STAFF, ROLES.EXAM_OFFICER, ROLES.PARENT, ROLES.ADMINISTRATOR],
+      },
     ],
   },
   {

@@ -28,9 +28,11 @@ import PlaceholderPage from './private/pages/PlaceholderPage';
 import HelpSupport from './private/pages/HelpSupport';
 import SchoolInquiries from './private/pages/SchoolInquiries';
 import Timetable from './private/pages/Timetable';
-import Complaint from './private/pages/Complaint';
+
 import ChildProfilePage from './private/pages/parent/ChildProfilePage';
 import ChildResultsPage from './private/pages/parent/ChildResultsPage';
+import AnnouncementsPage from './private/pages/announcements/AnnouncementsPage';
+import ComplaintsPage from './private/pages/complaints/ComplaintsPage';
 import StudentManagement from './private/pages/people/StudentManagement';
 import StaffManagement from './private/pages/people/StaffManagement';
 import ParentManagement from './private/pages/people/ParentManagement';
@@ -125,12 +127,14 @@ function PrivateRoutes() {
       <Route path="/children/:studentId/profile" element={<PrivateAppShell pageTitle="Student Profile"><ChildProfilePage /></PrivateAppShell>} />
       <Route path="/children/:studentId/results" element={<PrivateAppShell pageTitle="Student Results"><ChildResultsPage /></PrivateAppShell>} />
 
+      {/* School communication */}
+      <Route path="/announcements" element={<PrivateAppShell pageTitle="Announcements"><AnnouncementsPage /></PrivateAppShell>} />
+      <Route path="/complaints" element={<PrivateAppShell pageTitle="Complaints"><ComplaintsPage /></PrivateAppShell>} />
+
       {/* Student */}
       <Route path="/student-subjects" element={<PrivateAppShell pageTitle="My Subjects"><PlaceholderPage title="My Subjects" description="Subjects offered by the student's class will appear here." /></PrivateAppShell>} />
       <Route path="/student-attendance" element={<PrivateAppShell pageTitle="My Attendance"><PlaceholderPage title="My Attendance" description="Daily attendance records and reports will appear here." /></PrivateAppShell>} />
       <Route path="/student-results" element={<PrivateAppShell pageTitle="My Results"><PlaceholderPage title="My Results" description="Published scores, grades, and positions will appear here." /></PrivateAppShell>} />
-      <Route path="/student-announcements" element={<PrivateAppShell pageTitle="Announcements"><PlaceholderPage title="Announcements" description="Official school notices and updates will appear here." /></PrivateAppShell>} />
-      <Route path="/student-complaints" element={<PrivateAppShell pageTitle="Complaints"><Complaint /></PrivateAppShell>} />
 
       {/* Operations & support */}
       <Route path="/messages" element={<PrivateAppShell pageTitle="Messages"><PlaceholderPage title="Messages" description="Internal staff communication will appear here." /></PrivateAppShell>} />

@@ -14,6 +14,7 @@ import {
   KeyRound,
   LockKeyhole,
   Mail,
+  MailCheck,
   Pencil,
   Save,
   ShieldCheck,
@@ -27,6 +28,11 @@ import {
   normalizeRole,
   ROLES,
 } from '../../utils/roles';
+import {
+  requestEmailChange,
+  updateProfile,
+  verifyEmailChange,
+} from './profileApi';
 
 function getDisplayName(user, student) {
   const name = [
@@ -140,11 +146,13 @@ function Field({
 function StatusMessage({ type = 'info', children }) {
   const styles = {
     info: 'border-blue-100 bg-blue-50 text-blue-800',
+    success: 'border-emerald-100 bg-emerald-50 text-emerald-800',
     error: 'border-red-100 bg-red-50 text-red-700',
     warning: 'border-amber-100 bg-amber-50 text-amber-800',
   };
 
-  const Icon = type === 'error' ? X : Info;
+  const Icon =
+    type === 'error' ? X : type === 'success' ? CheckCircle2 : Info;
 
   return (
     <div
@@ -173,11 +181,16 @@ function InfoChip({ icon: Icon, label, value }) {
 }
 
 export default function ProfilePage() {
-  const { user, student, school } = useUserContext();
+  const { user, student, school, setUser } = useUserContext();
   const fileInputRef = useRef(null);
 
   const normalizedRole = normalizeRole(user?.role || student?.role);
   const isStudent = normalizedRole === ROLES.STUDENT;
+  const isSchoolAdministrator = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR].includes(normalizedRole);
+  const helpPath = isSchoolAdministrator ? '/help-support' : '/complaints';
+  const helpDescription = isSchoolAdministrator
+    ? 'Contact ScholaNode support about your account.'
+    : 'Contact your school office about this account, or raise a complaint.';
   const roleLabel =
     getRoleLabel(normalizedRole || user?.role || student?.role) || 'User';
 
@@ -212,20 +225,24 @@ export default function ProfilePage() {
 
   const [profileMessage, setProfileMessage] = useState('');
   const [profileMessageType, setProfileMessageType] = useState('info');
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const [newEmail, setNewEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [emailStep, setEmailStep] = useState('idle');
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
 
   const [emailMessage, setEmailMessage] = useState('');
   const [emailMessageType, setEmailMessageType] = useState('info');
 
-  const [showEmailForm, setShowEmailForm] = useState(false);
-
-  const profileChanged =
+  const nameChanged =
     form.firstName !== initialProfile.firstName ||
-    form.surName !== initialProfile.surName ||
-    imageChanged;
+    form.surName !== initialProfile.surName;
+
+  const profileChanged = nameChanged || imageChanged;
 
   const normalizedOriginalEmail = originalEmail.toLowerCase();
   const normalizedNewEmail = newEmail.trim().toLowerCase();
@@ -275,13 +292,55 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
-  const handleProfileSave = () => {
-    setProfileMessageType('warning');
-    setProfileMessage(
-      imageChanged
-        ? 'Your new photo is a local preview only. Profile updates are not connected yet, so nothing was uploaded.'
-        : 'Your changes are not saved yet. Profile updates are not connected, so nothing was sent to your school.',
-    );
+  const applyServerUser = (serverUser) => {
+    if (!serverUser) return;
+
+    const nextUser = { ...(user || {}), ...serverUser };
+    setUser(nextUser);
+
+    try {
+      localStorage.setItem('scholanode_user_cache', JSON.stringify(nextUser));
+    } catch {
+      // Storage unavailable or quota exceeded
+    }
+  };
+
+  const handleProfileSave = async () => {
+    const firstName = form.firstName.trim();
+    const surName = form.surName.trim();
+
+    if (!firstName || !surName) {
+      setProfileMessageType('error');
+      setProfileMessage('First name and surname are required.');
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileMessage('');
+
+    try {
+      const response = await updateProfile({ firstName, surName });
+      const serverUser = response?.user;
+
+      if (serverUser) {
+        applyServerUser(serverUser);
+      }
+      setForm({
+        firstName: serverUser?.firstName ?? firstName,
+        surName: serverUser?.surName ?? surName,
+      });
+
+      setProfileMessageType('success');
+      setProfileMessage(response?.message || 'Profile updated successfully.');
+    } catch (requestError) {
+      setProfileMessageType('error');
+      setProfileMessage(
+        requestError?.response?.data?.message ||
+          'We could not update your profile. Check your connection and try again.',
+      );
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const resetProfileChanges = () => {
@@ -295,10 +354,23 @@ export default function ProfilePage() {
     setNewEmail('');
     setCurrentPassword('');
     setShowPassword(false);
+    setVerificationCode('');
+    setPendingEmail('');
     setEmailMessage('');
   };
 
-  const handleEmailRequest = () => {
+  const closeEmailForm = () => {
+    resetEmailFields();
+    setEmailStep('idle');
+  };
+
+  const backToEmailForm = () => {
+    setVerificationCode('');
+    setEmailMessage('');
+    setEmailStep('form');
+  };
+
+  const handleEmailRequest = async () => {
     if (!normalizedOriginalEmail) {
       setEmailMessageType('error');
       setEmailMessage('Your current account email is not available.');
@@ -323,16 +395,70 @@ export default function ProfilePage() {
       return;
     }
 
-    setCurrentPassword('');
-    setEmailMessageType('warning');
-    setEmailMessage(
-      'Email changes are not available yet. Your current email stays active and no request was sent.',
-    );
+    setEmailSubmitting(true);
+    setEmailMessage('');
+
+    try {
+      const response = await requestEmailChange({
+        newEmail: normalizedNewEmail,
+        currentPassword,
+      });
+
+      setPendingEmail(normalizedNewEmail);
+      setCurrentPassword('');
+      setShowPassword(false);
+      setVerificationCode('');
+      setEmailStep('code');
+      setEmailMessageType('success');
+      setEmailMessage(
+        response?.message ||
+          'A verification code has been sent to your new email address.',
+      );
+    } catch (requestError) {
+      setEmailMessageType('error');
+      setEmailMessage(
+        requestError?.response?.data?.message ||
+          'We could not start the email change. Check your password and try again.',
+      );
+    } finally {
+      setEmailSubmitting(false);
+    }
   };
 
-  const closeEmailForm = () => {
-    resetEmailFields();
-    setShowEmailForm(false);
+  const handleEmailVerify = async () => {
+    const code = verificationCode.trim();
+
+    if (!/^\d{6}$/.test(code)) {
+      setEmailMessageType('error');
+      setEmailMessage('Enter the 6-digit code sent to your new email address.');
+      return;
+    }
+
+    setEmailSubmitting(true);
+    setEmailMessage('');
+
+    try {
+      const response = await verifyEmailChange({
+        newEmail: pendingEmail,
+        code,
+      });
+
+      applyServerUser(response?.user);
+      resetEmailFields();
+      setEmailStep('idle');
+      setEmailMessageType('success');
+      setEmailMessage(
+        response?.message || 'Your email address has been updated successfully.',
+      );
+    } catch (requestError) {
+      setEmailMessageType('error');
+      setEmailMessage(
+        requestError?.response?.data?.message ||
+          'That code could not be verified. Check the code and try again.',
+      );
+    } finally {
+      setEmailSubmitting(false);
+    }
   };
 
   const contactDetails = [
@@ -458,6 +584,9 @@ export default function ProfilePage() {
             <p className="text-xs text-blue-200">
               PNG, JPG or WebP · Max 5 MB
             </p>
+            <p className="text-xs text-amber-200">
+              Preview only · uploads coming soon
+            </p>
           </div>
         </div>
       </section>
@@ -473,7 +602,7 @@ export default function ProfilePage() {
                 description="The details your account currently has on record."
               />
 
-              {profileChanged && (
+              {nameChanged && (
                 <span className="flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                   Unsaved changes
@@ -512,8 +641,8 @@ export default function ProfilePage() {
               <Info size={16} className="mt-0.5 shrink-0 text-blue-700" />
               <p className="text-[13px] leading-5 text-blue-800">
                 {isStudent
-                  ? 'Student names and academic records are managed by the school. You can change your photo and request an email change.'
-                  : 'Some details are managed by your school. Contact the school office if a record needs to be corrected.'}
+                  ? 'Student names and academic records are managed by the school. You can update your email address below.'
+                  : 'Your name can be updated here. Other details are managed by your school, so contact the school office if a record needs correcting.'}
               </p>
             </div>
 
@@ -538,11 +667,11 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleProfileSave}
-                disabled={!profileChanged}
+                disabled={!nameChanged || profileSaving}
                 className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Save size={16} />
-                Save changes
+                {profileSaving ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           </section>
@@ -580,12 +709,21 @@ export default function ProfilePage() {
             </div>
 
             <p className="mt-4 text-[13px] leading-5 text-slate-500">
-              Email is updated separately from your personal details so a single
-              verification only affects the new address. Your current email
-              stays active until a change is verified and saved.
+              Email is updated separately from your personal details. Enter your
+              current password, then verify the 6-digit code sent to the new
+              address. Your current email stays active until the change is
+              verified.
             </p>
 
-            {!showEmailForm ? (
+            {emailStep === 'idle' && emailMessage && (
+              <div className="mt-4">
+                <StatusMessage type={emailMessageType}>
+                  {emailMessage}
+                </StatusMessage>
+              </div>
+            )}
+
+            {emailStep === 'idle' ? (
               <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
@@ -600,7 +738,7 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setShowEmailForm(true);
+                    setEmailStep('form');
                     setEmailMessage('');
                   }}
                   className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-[#123A8F] transition hover:bg-blue-50"
@@ -613,7 +751,9 @@ export default function ProfilePage() {
               <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-bold text-slate-900">
-                    Change your email
+                    {emailStep === 'code'
+                      ? 'Verify your new email'
+                      : 'Change your email'}
                   </h3>
 
                   <button
@@ -626,83 +766,152 @@ export default function ProfilePage() {
                   </button>
                 </div>
 
-                <label className="block">
-                  <span className="mb-2 block text-[13px] font-semibold text-slate-700">
-                    New email address
-                  </span>
-                  <input
-                    id="new-email"
-                    type="email"
-                    autoComplete="email"
-                    value={newEmail}
-                    onChange={(event) => {
-                      setNewEmail(event.target.value);
-                      setEmailMessage('');
-                    }}
-                    placeholder="you@example.com"
-                    className={inputClass}
-                  />
-                </label>
+                {emailStep === 'form' ? (
+                  <>
+                    <label className="block">
+                      <span className="mb-2 block text-[13px] font-semibold text-slate-700">
+                        New email address
+                      </span>
+                      <input
+                        id="new-email"
+                        type="email"
+                        autoComplete="email"
+                        value={newEmail}
+                        onChange={(event) => {
+                          setNewEmail(event.target.value);
+                          setEmailMessage('');
+                        }}
+                        placeholder="you@example.com"
+                        className={inputClass}
+                      />
+                    </label>
 
-                <label className="block">
-                  <span className="mb-2 block text-[13px] font-semibold text-slate-700">
-                    Current password
-                  </span>
+                    <label className="block">
+                      <span className="mb-2 block text-[13px] font-semibold text-slate-700">
+                        Current password
+                      </span>
 
-                  <div className="relative">
-                    <input
-                      id="current-password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      value={currentPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                      placeholder="Enter your current password"
-                      className={`${inputClass} pr-12`}
-                    />
+                      <div className="relative">
+                        <input
+                          id="current-password"
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          value={currentPassword}
+                          onChange={(event) =>
+                            setCurrentPassword(event.target.value)
+                          }
+                          placeholder="Enter your current password"
+                          className={`${inputClass} pr-12`}
+                        />
 
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((value) => !value)}
-                      className="absolute inset-y-0 right-0 flex cursor-pointer items-center px-3.5 text-slate-400 transition hover:text-slate-700"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((value) => !value)}
+                          className="absolute inset-y-0 right-0 flex cursor-pointer items-center px-3.5 text-slate-400 transition hover:text-slate-700"
+                          aria-label={
+                            showPassword ? 'Hide password' : 'Show password'
+                          }
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </label>
 
-                {emailMessage && (
-                  <StatusMessage type={emailMessageType}>
-                    {emailMessage}
-                  </StatusMessage>
+                    {emailMessage && (
+                      <StatusMessage type={emailMessageType}>
+                        {emailMessage}
+                      </StatusMessage>
+                    )}
+
+                    <div className="flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="button"
+                        onClick={resetEmailFields}
+                        className="cursor-pointer rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        Reset fields
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleEmailRequest}
+                        disabled={emailSubmitting}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <KeyRound size={16} />
+                        {emailSubmitting ? 'Sending code...' : 'Send verification code'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                      <FileLock2
+                        size={16}
+                        className="mt-0.5 shrink-0 text-blue-700"
+                      />
+                      <p className="text-[13px] leading-5 text-blue-800">
+                        We will send a 6-digit code to the new address. Your
+                        current email stays active until the new one is verified.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 text-[13px] leading-5 text-blue-900">
+                      Enter the 6-digit code sent to{' '}
+                      <span className="font-bold">{pendingEmail}</span>.
+                    </div>
+
+                    <label className="block">
+                      <span className="mb-2 block text-[13px] font-semibold text-slate-700">
+                        Verification code
+                      </span>
+                      <input
+                        id="email-verification-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={verificationCode}
+                        onChange={(event) => {
+                          setVerificationCode(
+                            event.target.value.replace(/\D/g, ''),
+                          );
+                          setEmailMessage('');
+                        }}
+                        placeholder="000000"
+                        className={`${inputClass} text-center text-lg font-bold tracking-[0.4em]`}
+                      />
+                    </label>
+
+                    {emailMessage && (
+                      <StatusMessage type={emailMessageType}>
+                        {emailMessage}
+                      </StatusMessage>
+                    )}
+
+                    <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="button"
+                        onClick={backToEmailForm}
+                        className="cursor-pointer rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        Use a different email
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleEmailVerify}
+                        disabled={emailSubmitting}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <MailCheck size={16} />
+                        {emailSubmitting
+                          ? 'Verifying...'
+                          : 'Verify and update email'}
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                <div className="flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                  <button
-                    type="button"
-                    onClick={resetEmailFields}
-                    className="cursor-pointer rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                  >
-                    Reset fields
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleEmailRequest}
-                    className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
-                  >
-                    <KeyRound size={16} />
-                    Request email change
-                  </button>
-                </div>
-
-                <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                  <FileLock2 size={16} className="mt-0.5 shrink-0 text-blue-700" />
-                  <p className="text-[13px] leading-5 text-blue-800">
-                    A real update must validate your current password, verify the
-                    new address, and only then replace your account email.
-                  </p>
-                </div>
               </div>
             )}
           </section>
@@ -779,7 +988,7 @@ export default function ProfilePage() {
           </section>
 
           <Link
-            to="/help-support"
+            to={helpPath}
             className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
           >
             <div>
@@ -787,7 +996,7 @@ export default function ProfilePage() {
                 Need help?
               </p>
               <p className="mt-1 text-[13px] leading-5 text-slate-500">
-                Contact support about your account.
+                {helpDescription}
               </p>
             </div>
             <ChevronRight size={18} className="shrink-0 text-slate-400" />

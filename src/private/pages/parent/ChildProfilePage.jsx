@@ -5,10 +5,14 @@ import {
   BellOff,
   BellRing,
   Check,
+  Eye,
+  EyeOff,
   GraduationCap,
   Hash,
   Info,
+  KeyRound,
   Mail,
+  MailCheck,
   Pencil,
   UserRound,
   Users,
@@ -16,7 +20,10 @@ import {
 } from "lucide-react";
 import ChildPageLayout from "./ChildPageLayout";
 import ChildStatusBadge from "./ChildStatusBadge";
-import { updateChildEmail } from "../people/parentApi";
+import {
+  requestChildEmailChange,
+  verifyChildEmailChange,
+} from "../people/parentApi";
 import {
   getClassName,
   getDisplayName,
@@ -66,28 +73,46 @@ function InfoChip({ icon: Icon, label, value }) {
 }
 
 function ChildEmailCard({ childId, email, onEmailChange }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(email || "");
-  const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState("idle");
+  const [newEmail, setNewEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  function startEditing() {
-    setValue(email || "");
+  function resetForm() {
+    setNewEmail("");
+    setCurrentPassword("");
+    setShowPassword(false);
+    setVerificationCode("");
+    setPendingEmail("");
     setError("");
+  }
+
+  function startEditing() {
+    resetForm();
     setNotice("");
-    setEditing(true);
+    setStep("form");
   }
 
   function cancelEditing() {
-    setEditing(false);
-    setError("");
+    resetForm();
+    setStep("idle");
   }
 
-  async function handleSubmit(event) {
+  function backToForm() {
+    setVerificationCode("");
+    setError("");
+    setStep("form");
+  }
+
+  async function handleRequest(event) {
     event.preventDefault();
 
-    const nextEmail = value.trim().toLowerCase();
+    const nextEmail = newEmail.trim().toLowerCase();
 
     if (!nextEmail) {
       setError("Enter your child's email address.");
@@ -99,39 +124,81 @@ function ChildEmailCard({ childId, email, onEmailChange }) {
       return;
     }
 
-    if (nextEmail === String(email || "").toLowerCase()) {
-      setEditing(false);
-      setError("");
+    if (nextEmail === String(email || "").trim().toLowerCase()) {
+      setError("Enter an email address different from the current one.");
       return;
     }
 
-    setSaving(true);
+    if (!currentPassword.trim()) {
+      setError("Enter your current password to confirm this request.");
+      return;
+    }
+
+    setSubmitting(true);
     setError("");
+    setNotice("");
 
     try {
-      const response = await updateChildEmail(childId, nextEmail);
-      const data = response?.data || {};
-      const returnedChild = data.child || data.student || null;
-      const savedEmail = Object.prototype.hasOwnProperty.call(data, "email")
-        ? data.email
-        : returnedChild && Object.prototype.hasOwnProperty.call(returnedChild, "email")
-          ? returnedChild.email
-          : nextEmail;
+      const response = await requestChildEmailChange(childId, {
+        newEmail: nextEmail,
+        currentPassword,
+      });
 
-      onEmailChange(savedEmail || "");
-      setNotice(response?.message || "Email address updated.");
-      setEditing(false);
+      setPendingEmail(nextEmail);
+      setCurrentPassword("");
+      setShowPassword(false);
+      setVerificationCode("");
+      setStep("code");
+      setNotice(
+        response?.message ||
+          "A verification code has been sent to the new email address."
+      );
     } catch (requestError) {
-      const status = requestError?.response?.status;
-
       setError(
-        status === 404
-          ? "Email updates are not available yet. Please contact the school office."
-          : requestError?.response?.data?.message ||
-              "We could not update the email address. Please try again."
+        requestError?.response?.data?.message ||
+          "We could not start the email change. Check your password and try again."
       );
     } finally {
-      setSaving(false);
+      setSubmitting(false);
+    }
+  }
+
+  async function handleVerify(event) {
+    event.preventDefault();
+
+    const code = verificationCode.trim();
+
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the 6-digit code sent to the new email address.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await verifyChildEmailChange(childId, {
+        newEmail: pendingEmail,
+        code,
+      });
+
+      const savedEmail = response?.data?.email || pendingEmail;
+
+      onEmailChange(savedEmail);
+      resetForm();
+      setStep("idle");
+      setNotice(
+        response?.message ||
+          "Your child's email address has been updated successfully."
+      );
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          "That code could not be verified. Check the code and try again."
+      );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -152,54 +219,7 @@ function ChildEmailCard({ childId, email, onEmailChange }) {
         </div>
       </div>
 
-      {editing ? (
-        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-          <div>
-            <label
-              htmlFor="child-email"
-              className="mb-1.5 block text-[13px] font-semibold text-slate-600"
-            >
-              Student email
-            </label>
-            <input
-              id="child-email"
-              type="email"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder="student@example.com"
-              className={inputClass}
-              autoComplete="off"
-              autoFocus
-            />
-          </div>
-
-          {error && (
-            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[13px] font-medium text-rose-700">
-              {error}
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Check size={16} />
-              {saving ? "Saving..." : "Save email"}
-            </button>
-            <button
-              type="button"
-              onClick={cancelEditing}
-              disabled={saving}
-              className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <X size={16} />
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
+      {step === "idle" ? (
         <>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
             <div className="min-w-0">
@@ -232,6 +252,181 @@ function ChildEmailCard({ childId, email, onEmailChange }) {
             </p>
           )}
         </>
+      ) : (
+        <form
+          onSubmit={step === "code" ? handleVerify : handleRequest}
+          className="mt-4 space-y-3 border-t border-slate-100 pt-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-bold text-slate-900">
+              {step === "code"
+                ? "Verify the new email"
+                : "Change your child's email"}
+            </h3>
+
+            <button
+              type="button"
+              onClick={cancelEditing}
+              className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Cancel email change"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {step === "form" ? (
+            <>
+              <div>
+                <label
+                  htmlFor="child-new-email"
+                  className="mb-1.5 block text-[13px] font-semibold text-slate-600"
+                >
+                  New email address
+                </label>
+                <input
+                  id="child-new-email"
+                  type="email"
+                  value={newEmail}
+                  onChange={(event) => {
+                    setNewEmail(event.target.value);
+                    setError("");
+                  }}
+                  placeholder="student@example.com"
+                  className={inputClass}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="child-email-password"
+                  className="mb-1.5 block text-[13px] font-semibold text-slate-600"
+                >
+                  Your current password
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="child-email-password"
+                    type={showPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(event) => {
+                      setCurrentPassword(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="Enter your current password"
+                    className={`${inputClass} pr-12`}
+                    autoComplete="current-password"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute inset-y-0 right-0 flex cursor-pointer items-center px-3.5 text-slate-400 transition hover:text-slate-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[13px] font-medium text-rose-700">
+                  {error}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  disabled={submitting}
+                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <KeyRound size={16} />
+                  {submitting ? "Sending code..." : "Send verification code"}
+                </button>
+              </div>
+
+              <p className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 text-[13px] leading-5 text-blue-900">
+                <Info size={15} className="mt-0.5 shrink-0" />
+                We will send a 6-digit code to the new address. Your child&apos;s
+                current email stays active until the new one is verified.
+              </p>
+            </>
+          ) : (
+            <>
+              {notice && (
+                <p className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13px] font-medium text-emerald-800">
+                  <Check size={15} className="mt-0.5 shrink-0" />
+                  {notice}
+                </p>
+              )}
+
+              <p className="rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 text-[13px] leading-5 text-blue-900">
+                Enter the 6-digit code sent to{" "}
+                <span className="font-bold">{pendingEmail}</span>. The current
+                email stays active until this code is verified.
+              </p>
+
+              <div>
+                <label
+                  htmlFor="child-email-code"
+                  className="mb-1.5 block text-[13px] font-semibold text-slate-600"
+                >
+                  Verification code
+                </label>
+                <input
+                  id="child-email-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={(event) => {
+                    setVerificationCode(event.target.value.replace(/\D/g, ""));
+                    setError("");
+                  }}
+                  placeholder="000000"
+                  className={`${inputClass} text-center text-lg font-bold tracking-[0.4em]`}
+                />
+              </div>
+
+              {error && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[13px] font-medium text-rose-700">
+                  {error}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={backToForm}
+                  disabled={submitting}
+                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Use a different email
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <MailCheck size={16} />
+                  {submitting ? "Verifying..." : "Verify and update email"}
+                </button>
+              </div>
+            </>
+          )}
+        </form>
       )}
     </section>
   );

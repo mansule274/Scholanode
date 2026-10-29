@@ -24,19 +24,41 @@ export async function getParentDashboard() {
   }
 }
 
-export async function updateChildEmail(studentId, email) {
-  const endpoint = `${parentsBasePath}/children/${encodeURIComponent(studentId)}/email`;
-  console.log('Child email update request starting:', endpoint);
+export async function requestChildEmailChange(studentId, { newEmail, currentPassword }) {
+  const endpoint = `${parentsBasePath}/children/${encodeURIComponent(studentId)}/email-change/request`;
+  console.log('Child email change request starting:', endpoint, { newEmail });
 
   try {
-    const response = await privateAxiosInstance.patch(endpoint, { email });
-    console.log('Child email update response:', {
+    const response = await privateAxiosInstance.post(endpoint, { newEmail, currentPassword });
+    console.log('Child email change request response:', {
       status: response.status,
       data: response.data,
     });
     return response.data;
   } catch (error) {
-    console.error('Child email update request error:', {
+    console.error('Child email change request error:', {
+      endpoint,
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
+export async function verifyChildEmailChange(studentId, { newEmail, code }) {
+  const endpoint = `${parentsBasePath}/children/${encodeURIComponent(studentId)}/email-change/verify`;
+  console.log('Child email change verification starting:', endpoint, { newEmail });
+
+  try {
+    const response = await privateAxiosInstance.post(endpoint, { newEmail, code });
+    console.log('Child email change verification response:', {
+      status: response.status,
+      data: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Child email change verification error:', {
       endpoint,
       status: error?.response?.status,
       data: error?.response?.data,
