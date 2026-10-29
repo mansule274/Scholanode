@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useUserContext } from '../context/UserContext';
-import { getAcademicProgress } from '../pages/academic/academicSetupApi';
+import { getAcademicProgress } from '../private/pages/academic/academicSetupApi';
 
 const initialProgress = {
   percentage: 0,

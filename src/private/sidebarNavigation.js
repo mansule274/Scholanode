@@ -3,7 +3,6 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
-  CreditCard,
   FileText,
   GraduationCap,
   Layers,
@@ -57,7 +56,7 @@ const studentNavigation = [
     items: [
       { label: 'School Profile', icon: Building2, path: '/school-profile' },
       { label: 'Settings', icon: Settings2, path: '/settings' },
-      { label: 'Logout', icon: LogOut, path: '/private/logout', isLogout: true },
+      { label: 'Logout', icon: LogOut, isLogout: true },
     ],
   },
 ];
@@ -89,7 +88,7 @@ const navigation = [
       { label: 'Classes', icon: GraduationCap, path: '/classes', allowedRoles: administratorRoles },
       { label: 'Subjects', icon: BookOpen, path: '/subjects', allowedRoles: administratorRoles },
       { label: 'Sessions & Terms', icon: CalendarDays, path: '/sessions-terms', allowedRoles: administratorRoles },
-      { label: 'Results', icon: FileText, path: '/private/results', allowedRoles: [ROLES.EXAM_OFFICER, ROLES.ADMINISTRATOR] },
+      { label: 'Results', icon: FileText, path: '/results', allowedRoles: [ROLES.EXAM_OFFICER, ROLES.ADMINISTRATOR] },
     ],
   },
   {
@@ -100,8 +99,7 @@ const navigation = [
       { label: 'Verify Student', icon: ShieldCheck, path: '/verify-student', allowedRoles: [ROLES.SECURITY] },
       { label: 'Scan History', icon: History, path: '/scan-history', allowedRoles: [ROLES.SECURITY] },
       { label: 'Attendance', icon: ShieldCheck, path: '/attendance', requiresFormMaster: true },
-      { label: 'Payments', icon: CreditCard, path: '/payment', allowedRoles: administratorRoles },
-      { label: 'Messages', icon: MessageSquareText, path: '/private/messages', allowedRoles: administratorRoles },
+      { label: 'Messages', icon: MessageSquareText, path: '/messages', allowedRoles: administratorRoles },
     ],
   },
   {
@@ -110,9 +108,9 @@ const navigation = [
     items: [
       { label: 'School Profile', icon: Building2, path: '/school-profile' },
       { label: 'Settings', icon: Settings2, path: '/settings' },
-      { label: 'Notifications', icon: Bell, path: '/private/notifications' },
+      { label: 'Notifications', icon: Bell, path: '/notifications' },
       { label: 'Refer & Earn', icon: Sparkles, path: '/refer-earn' },
-      { label: 'Logout', icon: LogOut, path: '/private/logout', isLogout: true },
+      { label: 'Logout', icon: LogOut, isLogout: true },
     ],
   },
 ];

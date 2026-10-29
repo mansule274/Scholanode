@@ -192,7 +192,7 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[270px] flex-col border-r border-slate-200 bg-white shadow-sm lg:flex">
         {/* Brand / Logo */}
         <div className="flex h-[80px] items-center justify-between border-b border-slate-100 px-5">
-          <Link to="/admin" className="flex items-center gap-3">
+          <Link to="/dashboard" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#071A52] text-lg font-bold text-white shadow-sm">
               S
             </div>
@@ -269,7 +269,7 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <Link
-                to="/private/notifications"
+                to="/notifications"
                 className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-[#071A52]"
                 aria-label="Notifications"
               >

@@ -11,7 +11,6 @@ import {
   Inbox,
   Lightbulb,
   LifeBuoy,
-  Mail,
   MessageCircle,
   MessageSquareText,
   Paperclip,

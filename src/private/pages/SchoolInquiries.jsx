@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import {
   ArrowDownUp,
   ArrowLeft,
-  ArrowRight,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -14,11 +13,9 @@ import {
   Inbox,
   Mail,
   MessageSquareText,
-  MoreHorizontal,
   Phone,
   Search,
   ShieldCheck,
-  UserRound,
   X,
 } from 'lucide-react';
 

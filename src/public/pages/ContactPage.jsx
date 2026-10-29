@@ -13,8 +13,6 @@ import {
   MessageSquareText,
   Send,
   ShieldCheck,
-  Sparkles,
-  X,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 

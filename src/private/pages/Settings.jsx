@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Settings2,
   ShieldCheck,
@@ -11,7 +11,6 @@ import {
   LockKeyhole,
   RotateCcw,
   ChevronRight,
-  Sparkles,
   Clock3,
   BadgeCheck,
 } from "lucide-react";
