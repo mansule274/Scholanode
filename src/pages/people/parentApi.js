@@ -2,6 +2,28 @@ import privateAxiosInstance from '../../auth/privateAxiosInstance';
 
 const parentsBasePath = '/parents';
 
+export async function getParentDashboard() {
+  const endpoint = `${parentsBasePath}/dashboard`;
+  console.log('Parent dashboard request starting:', endpoint);
+
+  try {
+    const response = await privateAxiosInstance.get(endpoint);
+    console.log('Parent dashboard response:', {
+      status: response.status,
+      data: response.data,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Parent dashboard request error:', {
+      endpoint,
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
 export async function getParents({ page = 1, limit = 20, search, status, relationship } = {}) {
   const endpoint = `${parentsBasePath}/get-all`;
   const params = {

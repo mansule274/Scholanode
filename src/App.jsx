@@ -11,15 +11,8 @@ import PublicPricingPage from './public/pages/PricingPage';
 import PublicContactPage from './public/pages/ContactPage';
 
 import PrivateAppShell from './private/PrivateAppShell';
-import PrivateDashboardPage from './private/pages/DashboardPage';
-import PrivateStudentsPage from './private/pages/StudentsPage';
-import PrivateStaffPage from './private/pages/StaffPage';
-import PrivateClassesPage from './private/pages/ClassesPage';
-import PrivateSubjectsPage from './private/pages/SubjectsPage';
-import PrivateSessionsTermsPage from './private/pages/SessionsTermsPage';
 import PrivateResultsPage from './private/pages/ResultsPage';
 import PrivateAttendancePage from './private/pages/AttendancePage';
-import PrivatePaymentsPage from './private/pages/PaymentsPage';
 import PrivateMessagesPage from './private/pages/MessagesPage';
 import PrivateNotificationsPage from './private/pages/NotificationsPage';
 import PrivateProfilePage from './private/pages/ProfilePage';
@@ -55,10 +48,12 @@ import StudentPlaceholderPage from './pages/student/StudentPlaceholderPage';
 import VerifyStudent from './pages/attendance/VerifyStudent';
 import ScanHistoryPage from './pages/attendance/ScanHistoryPage';
 
-// test veiw parent dashbord private
+// test veiw new dashbord 
 import ParentDashboard from './pages/dashboard/ParentDashboard';
-import Complaint from './private/pages/Complaint';
+import ChildProfilePage from './pages/parent/ChildProfilePage';
+import ChildResultsPage from './pages/parent/ChildResultsPage';
 import HelpSupport from './private/pages/HelpSupport';
+import SchoolInquiries from './private/pages/SchoolInquiries';
 
 
 function AppLoadingScreen() {
@@ -119,6 +114,7 @@ function PublicRoutes() {
       <Route path="/students" element={<StudentManagement />} />
       <Route path="/parents" element={<ParentManagement />} />
       <Route path="/help-support" element={<HelpSupport />} />
+      <Route path="/school-inquiries" element={<SchoolInquiries />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -161,7 +157,9 @@ function PrivateRoutes() {
       <Route path="/academic-setup" element={<PrivateAppShell pageTitle="Academic Setup"><AcademicSetup /></PrivateAppShell>} />
       {/* Security & Gate Verification */}
       <Route path="/verify-student" element={<PrivateAppShell pageTitle="Verify Student"><VerifyStudent /></PrivateAppShell>} />
-      <Route path="/parent-test-view" element={<PrivateAppShell pageTitle="Gate Scan History"><ParentDashboard /></PrivateAppShell>} />
+      <Route path="/parent-test-view" element={<PrivateAppShell pageTitle="Parent Dashboard"><ParentDashboard /></PrivateAppShell>} />
+      <Route path="/children/:studentId/profile" element={<PrivateAppShell pageTitle="Student Profile"><ChildProfilePage /></PrivateAppShell>} />
+      <Route path="/children/:studentId/results" element={<PrivateAppShell pageTitle="Student Results"><ChildResultsPage /></PrivateAppShell>} />
       {/* Parent Dashboard */}
         <Route path="/scan-history" element={<PrivateAppShell pageTitle="Gate Scan History"><ScanHistoryPage /></PrivateAppShell>} />
         {/* <Route path="/student-test" element={<PrivateAppShell pageTitle="Gate Scan History"><Student /></PrivateAppShell>} /> */}
@@ -173,6 +171,7 @@ function PrivateRoutes() {
       <Route path="/payment-success" element={<PrivateAppShell pageTitle="Payment Success"><PaymentSuccessPage /></PrivateAppShell>} />
       <Route path="/private/messages" element={<PrivateAppShell pageTitle="Messages"><PrivateMessagesPage /></PrivateAppShell>} />
       <Route path="/private/notifications" element={<PrivateAppShell pageTitle="Notifications"><PrivateNotificationsPage /></PrivateAppShell>} />
+      
 
       {/* School Setup & Profile */}
       <Route path="/school-profile" element={<PrivateAppShell pageTitle="School Profile"><SchoolProfile /></PrivateAppShell>} />

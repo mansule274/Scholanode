@@ -1,8 +1,9 @@
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ShieldCheck,
-  Users,
+  Users, 
   ScanLine,
   History,
   Plus,
@@ -10,155 +11,58 @@ import {
   UserPlus,
   UserRoundCheck,
   UserRoundX,
-  Clock3,
-  ArrowDownLeft,
-  ArrowUpRight,
-  ChevronDown,
   X,
+  Check,
   CheckCircle2,
   AlertCircle,
-  Info,
   KeyRound,
   ShieldAlert,
-  CalendarDays,
   Loader2,
   RefreshCw,
+  MoreVertical,
+  Eye,
+  Pencil,
 } from "lucide-react";
-import { createGateSecurity, getGateSecurities } from "./gateAccessApi";
-
-const initialSecurity = [
-  {
-    id: "SEC-001",
-    firstName: "Ibrahim",
-    surName: "Musa",
-    loginId: "SEC/0001",
-    email: "ibrahim.musa@school.com",
-    isActive: true,
-  },
-  {
-    id: "SEC-002",
-    firstName: "Maryam",
-    surName: "Bello",
-    loginId: "SEC/0002",
-    email: "maryam.bello@school.com",
-    isActive: true,
-  },
-  {
-    id: "SEC-003",
-    firstName: "Usman",
-    surName: "Abdullahi",
-    loginId: "SEC/0003",
-    email: "usman.abdullahi@school.com",
-    isActive: false,
-  },
-];
-
-const initialStaff = [
-  {
-    id: "STF-001",
-    firstName: "Aisha",
-    surName: "Yusuf",
-    loginId: "SCH/STF/0001",
-    role: "STAFF",
-    permissionActive: true,
-  },
-  {
-    id: "STF-002",
-    firstName: "Abubakar",
-    surName: "Sani",
-    loginId: "SCH/STF/0002",
-    role: "STAFF",
-    permissionActive: true,
-  },
-  {
-    id: "STF-003",
-    firstName: "Fatima",
-    surName: "Umar",
-    loginId: "SCH/STF/0003",
-    role: "EXAM_OFFICER",
-    permissionActive: false,
-  },
-  {
-    id: "STF-004",
-    firstName: "Musa",
-    surName: "Garba",
-    loginId: "SCH/STF/0004",
-    role: "ADMINISTRATOR",
-    permissionActive: false,
-  },
-];
-
-const initialHistory = [
-  {
-    id: 1,
-    studentName: "Ahmad Ibrahim",
-    admissionNumber: "STU/2026/001",
-    className: "Primary 4A",
-    type: "ARRIVAL",
-    scanner: "Ibrahim Musa",
-    scannerType: "Security",
-    time: "07:32 AM",
-    date: "2026-10-20",
-  },
-  {
-    id: 2,
-    studentName: "Amina Yusuf",
-    admissionNumber: "STU/2026/002",
-    className: "Primary 3B",
-    type: "ARRIVAL",
-    scanner: "Aisha Yusuf",
-    scannerType: "Staff",
-    time: "07:35 AM",
-    date: "2026-10-20",
-  },
-  {
-    id: 3,
-    studentName: "Sani Abdullahi",
-    admissionNumber: "STU/2026/003",
-    className: "JSS 1A",
-    type: "ARRIVAL",
-    scanner: "Maryam Bello",
-    scannerType: "Security",
-    time: "07:41 AM",
-    date: "2026-10-20",
-  },
-  {
-    id: 4,
-    studentName: "Zainab Musa",
-    admissionNumber: "STU/2025/041",
-    className: "Primary 5A",
-    type: "RETURN",
-    scanner: "Abubakar Sani",
-    scannerType: "Staff",
-    time: "01:12 PM",
-    date: "2026-10-20",
-  },
-  {
-    id: 5,
-    studentName: "Hassan Bello",
-    admissionNumber: "STU/2026/010",
-    className: "JSS 2B",
-    type: "ARRIVAL",
-    scanner: "Ibrahim Musa",
-    scannerType: "Security",
-    time: "07:48 AM",
-    date: "2026-10-19",
-  },
-];
-
-const today = "2026-10-20";
+import {
+  createGateSecurity,
+  getGateSecurities,
+  sendPasswordRecovery,
+  setGateSecurityStatus,
+  updateGateSecurity,
+} from "./gateAccessApi";
+import {
+  getScannerPermissions,
+  grantScannerPermission,
+  revokeScannerPermission,
+} from "./gateScannerApi";
+import { getStaff } from "../people/staffApi";
 
 const getInitials = (firstName, surName) =>
-  `${firstName?.[0] || ""}${surName?.[0] || ""}`.toUpperCase();
+  `${firstName?.[0] || ""}${surName?.[0] || ""}`.toUpperCase() || "SC";
 
 const fullName = (person) =>
-  `${person.firstName} ${person.surName}`;
+  `${person?.firstName || ""} ${person?.surName || ""}`.trim() || "Unknown user";
 
 const formatRole = (role) =>
   role
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    ? role
+        .replaceAll("_", " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "—";
+
+const formatDate = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
 
 const isSecurityActive = (person) => {
   if (person?.status) {
@@ -176,6 +80,12 @@ const getSecurityStatusText = (person) => {
   }
   return person?.isActive ? "Active" : "Inactive";
 };
+
+const apiErrorMessage = (error, fallback) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.error ||
+  error?.message ||
+  fallback;
 
 const Avatar = ({ firstName, surName, color = "blue" }) => {
   const colors = {
@@ -196,7 +106,11 @@ const Avatar = ({ firstName, surName, color = "blue" }) => {
   );
 };
 
-const StatusBadge = ({ active, activeText = "Active" }) => (
+const StatusBadge = ({
+  active,
+  activeText = "Active",
+  inactiveText = "Inactive",
+}) => (
   <span
     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
       active
@@ -209,22 +123,22 @@ const StatusBadge = ({ active, activeText = "Active" }) => (
         active ? "bg-emerald-500" : "bg-slate-400"
       }`}
     />
-    {active ? activeText : "Inactive"}
+    {active ? activeText : inactiveText}
   </span>
 );
 
-const IconButton = ({ title, onClick, children, danger = false }) => (
+const ActionMenuItem = ({ icon: Icon, onClick, danger = false, children }) => (
   <button
     type="button"
-    title={title}
-    aria-label={title}
+    role="menuitem"
     onClick={onClick}
-    className={`inline-flex items-center justify-center rounded-lg border p-2 transition ${
+    className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-semibold transition ${
       danger
-        ? "border-rose-100 text-rose-600 hover:bg-rose-50"
-        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+        ? "text-rose-600 hover:bg-rose-50"
+        : "text-slate-700 hover:bg-slate-50"
     }`}
   >
+    <Icon size={16} className={danger ? "text-rose-500" : "text-slate-400"} />
     {children}
   </button>
 );
@@ -276,34 +190,92 @@ const Field = ({ label, children }) => (
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10";
 
-const PrimaryButton = ({ children, onClick, type = "button" }) => (
+const PrimaryButton = ({
+  children,
+  onClick,
+  type = "button",
+  disabled = false,
+  className = "",
+}) => (
   <button
     type={type}
     onClick={onClick}
-    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#071A52] to-[#123A8F] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-blue-200"
+    disabled={disabled}
+    className={`inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#071A52] to-[#123A8F] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
   >
     {children}
   </button>
 );
 
-const GateAccess = () => {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [security, setSecurity] = useState(initialSecurity);
-  const [securitySummary, setSecuritySummary] = useState(null);
-  const [isLoadingSecurity, setIsLoadingSecurity] = useState(false);
-  const [isSubmittingSecurity, setIsSubmittingSecurity] = useState(false);
-  const [isLiveSecurity, setIsLiveSecurity] = useState(false);
+const ErrorNotice = ({ message, onDismiss }) =>
+  message ? (
+    <div
+      role="alert"
+      className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800"
+    >
+      <AlertCircle size={18} className="mt-0.5 shrink-0 text-rose-600" />
+      <p className="flex-1 text-xs font-medium leading-5 sm:text-sm">
+        {message}
+      </p>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss error"
+          className="rounded-md p-1 text-rose-400 transition hover:bg-rose-100 hover:text-rose-700"
+        >
+          <X size={15} />
+        </button>
+      )}
+    </div>
+  ) : null;
 
-  const [staff, setStaff] = useState(initialStaff);
-  const [history] = useState(initialHistory);
+const TableMessage = ({
+  icon: Icon,
+  title,
+  description,
+  action,
+  iconClassName = "text-slate-300",
+}) => (
+  <div className="px-4 py-12 text-center">
+    <Icon size={28} className={`mx-auto ${iconClassName}`} />
+    <p className="mt-3 text-sm font-semibold text-slate-700">{title}</p>
+    {description && (
+      <p className="mt-1 text-xs text-slate-400">{description}</p>
+    )}
+    {action}
+  </div>
+);
+
+const GateAccess = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const [security, setSecurity] = useState([]);
+  const [securitySummary, setSecuritySummary] = useState(null);
+  const [isLoadingSecurity, setIsLoadingSecurity] = useState(true);
+  const [securityError, setSecurityError] = useState(null);
+  const [isSubmittingSecurity, setIsSubmittingSecurity] = useState(false);
+
+  const [scanners, setScanners] = useState([]);
+  const [isLoadingScanners, setIsLoadingScanners] = useState(true);
+  const [scannersError, setScannersError] = useState(null);
+
+  const [staffOptions, setStaffOptions] = useState([]);
+  const [isLoadingStaffOptions, setIsLoadingStaffOptions] = useState(false);
+  const [staffOptionsError, setStaffOptionsError] = useState(null);
+  const [staffModalSearch, setStaffModalSearch] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [isGranting, setIsGranting] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [historyDate, setHistoryDate] = useState("all");
-  const [historyType, setHistoryType] = useState("all");
 
   const [modal, setModal] = useState(null);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [message, setMessage] = useState(null);
+  const [actionsMenu, setActionsMenu] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   const [securityForm, setSecurityForm] = useState({
     firstName: "",
@@ -312,40 +284,121 @@ const GateAccess = () => {
   });
   const [securityModalError, setSecurityModalError] = useState(null);
 
-  const [selectedStaffId, setSelectedStaffId] = useState("");
-
   const notify = (type, text) => setMessage({ type, text });
 
   const loadSecurities = async () => {
     try {
       setIsLoadingSecurity(true);
+      setSecurityError(null);
       const res = await getGateSecurities();
       console.log("✅ [GateAccess] Loaded gate securities SUCCESS:", res);
+
       if (res?.success && Array.isArray(res?.securityPersonnel)) {
         setSecurity(res.securityPersonnel);
-        if (res.summary) {
-          setSecuritySummary(res.summary);
-        }
-        setIsLiveSecurity(true);
+        setSecuritySummary(res.summary || null);
+      } else {
+        setSecurity([]);
+        setSecuritySummary(null);
+        setSecurityError(res?.message || "Could not load the security team.");
       }
-    } catch (err) {
+    } catch (error) {
       console.error(
         "❌ [GateAccess] Load gate securities ERROR:",
-        err?.response?.data || err?.message || err
+        error?.response?.data || error?.message || error
+      );
+      setSecurity([]);
+      setSecuritySummary(null);
+      setSecurityError(
+        apiErrorMessage(
+          error,
+          "Could not load the security team. Please try again."
+        )
       );
     } finally {
       setIsLoadingSecurity(false);
     }
   };
 
+  const loadScanners = async () => {
+    try {
+      setIsLoadingScanners(true);
+      setScannersError(null);
+      const res = await getScannerPermissions();
+      console.log("✅ [GateAccess] Loaded scanner permissions SUCCESS:", res);
+
+      if (res?.success && Array.isArray(res?.scanners)) {
+        setScanners(res.scanners);
+      } else {
+        setScanners([]);
+        setScannersError(
+          res?.message || "Could not load authorized staff."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Load scanner permissions ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setScanners([]);
+      setScannersError(
+        apiErrorMessage(
+          error,
+          "Could not load authorized staff. Please try again."
+        )
+      );
+    } finally {
+      setIsLoadingScanners(false);
+    }
+  };
+
   useEffect(() => {
-    loadSecurities();
+    const request = window.setTimeout(() => {
+      loadSecurities();
+      loadScanners();
+    }, 0);
+
+    return () => window.clearTimeout(request);
   }, []);
+
+  const loadStaffOptions = async () => {
+    try {
+      setIsLoadingStaffOptions(true);
+      setStaffOptionsError(null);
+
+      const res = await getStaff();
+      const records = Array.isArray(res?.staff) ? res.staff : [];
+      const authorizedIds = new Set(
+        scanners.filter((person) => person.isActive).map((person) => person.userId)
+      );
+
+      setStaffOptions(
+        records.filter(
+          (person) =>
+            person.role === "STAFF" &&
+            person.status === "ACTIVE" &&
+            !authorizedIds.has(person.id)
+        )
+      );
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Load eligible staff ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setStaffOptions([]);
+      setStaffOptionsError(
+        apiErrorMessage(error, "Could not load the staff list. Please try again.")
+      );
+    } finally {
+      setIsLoadingStaffOptions(false);
+    }
+  };
 
   const activeSecurityCount =
     securitySummary?.active ?? security.filter(isSecurityActive).length;
-  const activeStaff = staff.filter((person) => person.permissionActive);
-  const todayHistory = history.filter((record) => record.date === today);
+  const authorizedScanners = useMemo(
+    () => scanners.filter((person) => person.isActive),
+    [scanners]
+  );
 
   const filteredSecurity = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -357,39 +410,94 @@ const GateAccess = () => {
     );
   }, [security, search]);
 
-  const filteredStaff = useMemo(() => {
+  const filteredScanners = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return staff.filter((person) =>
-      `${fullName(person)} ${person.loginId} ${person.role}`
+    return authorizedScanners.filter((person) =>
+      `${fullName(person)} ${person.loginId || ""} ${person.role || ""}`
         .toLowerCase()
         .includes(query)
     );
-  }, [staff, search]);
+  }, [authorizedScanners, search]);
 
-  const filteredHistory = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const filteredStaffOptions = useMemo(() => {
+    const query = staffModalSearch.trim().toLowerCase();
 
-    return history.filter((record) => {
-      const matchesSearch =
-        `${record.studentName} ${record.admissionNumber} ${record.className} ${record.scanner}`
-          .toLowerCase()
-          .includes(query);
+    return staffOptions.filter((person) =>
+      `${fullName(person)} ${person.loginId || ""}`
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [staffOptions, staffModalSearch]);
 
-      const matchesDate =
-        historyDate === "all" || record.date === historyDate;
+  useEffect(() => {
+    if (!actionsMenu) return undefined;
 
-      const matchesType =
-        historyType === "all" || record.type === historyType;
+    const closeMenu = () => setActionsMenu(null);
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
 
-      return matchesSearch && matchesDate && matchesType;
-    });
-  }, [history, search, historyDate, historyType]);
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionsMenu]);
+
+  const toggleActionsMenu = (event, person) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 208;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top =
+      spaceBelow < menuHeight
+        ? Math.max(8, rect.top - menuHeight - 6)
+        : rect.bottom + 6;
+    const right = Math.min(
+      Math.max(8, window.innerWidth - rect.right),
+      Math.max(8, window.innerWidth - 216)
+    );
+
+    setActionsMenu((current) =>
+      current?.person.id === person.id ? null : { person, top, right }
+    );
+  };
+
+  const closePersonModal = () => {
+    setModal(null);
+    setSelectedPerson(null);
+    setActionError(null);
+  };
+
+  const openPersonAction = (person, nextModal) => {
+    setActionsMenu(null);
+    setSelectedPerson(person);
+    setActionError(null);
+    setModal(nextModal);
+  };
 
   const openTab = (tab) => {
     setActiveTab(tab);
     setSearch("");
     setMessage(null);
+    setActionsMenu(null);
+  };
+
+  const openAuthorizeStaff = () => {
+    setModal("authorize-staff");
+    setMessage(null);
+    setActionError(null);
+    setSelectedStaffId("");
+    setStaffModalSearch("");
+    setStaffOptions([]);
+    loadStaffOptions();
   };
 
   const createSecurity = async (event) => {
@@ -440,11 +548,10 @@ const GateAccess = () => {
         console.error("❌ [GateAccess] createGateSecurity returned unsuccessful:", response);
       }
     } catch (error) {
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        error?.message ||
-        "Could not create security account. Please check the details and try again.";
+      const errorMsg = apiErrorMessage(
+        error,
+        "Could not create security account. Please check the details and try again."
+      );
       setSecurityModalError(errorMsg);
       console.error("❌ [GateAccess] createGateSecurity ERROR response:", {
         status: error?.response?.status,
@@ -456,170 +563,285 @@ const GateAccess = () => {
     }
   };
 
-  const grantStaffPermission = (event) => {
+  const grantStaffPermission = async (event) => {
     event.preventDefault();
 
     if (!selectedStaffId) {
-      notify("error", "Please select a staff member.");
+      setActionError("Select a staff member to continue.");
       return;
     }
 
-    const selected = staff.find((person) => person.id === selectedStaffId);
+    try {
+      setIsGranting(true);
+      setActionError(null);
 
-    if (!selected) {
-      notify("error", "That staff member could not be found.");
+      const response = await grantScannerPermission({ userId: selectedStaffId });
+      console.log("✅ [GateAccess] Grant scanner permission SUCCESS:", response);
+
+      if (response?.success && response?.scanner) {
+        notify(
+          "success",
+          response.message || "Staff member authorized to scan successfully."
+        );
+        setModal(null);
+        setSelectedStaffId("");
+        setStaffOptions([]);
+        loadScanners();
+      } else {
+        setActionError(
+          response?.message || "Could not grant scanning permission."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Grant scanner permission ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setActionError(
+        apiErrorMessage(error, "Could not grant scanning permission.")
+      );
+    } finally {
+      setIsGranting(false);
+    }
+  };
+
+  const revokeStaffPermission = async () => {
+    if (!selectedPerson) return;
+
+    try {
+      setIsSubmittingAction(true);
+      setActionError(null);
+
+      const response = await revokeScannerPermission(selectedPerson.userId);
+      console.log("✅ [GateAccess] Revoke scanner permission SUCCESS:", response);
+
+      if (response?.success) {
+        notify(
+          "success",
+          response.message ||
+            `${fullName(selectedPerson)}'s scanning access has been revoked.`
+        );
+        closePersonModal();
+        loadScanners();
+      } else {
+        setActionError(
+          response?.message || "Could not revoke scanning permission."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Revoke scanner permission ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setActionError(
+        apiErrorMessage(error, "Could not revoke scanning permission.")
+      );
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const saveSecurityDetails = async () => {
+    if (!selectedPerson) return;
+
+    const firstName = selectedPerson.firstName?.trim() || "";
+    const surName = selectedPerson.surName?.trim() || "";
+    const email = selectedPerson.email?.trim() || "";
+
+    if (!firstName || !surName || !email) {
+      setActionError("First name, surname, and email are required.");
       return;
     }
 
-    if (selected.permissionActive) {
-      notify("error", "This staff member already has scanning permission.");
+    try {
+      setIsSubmittingAction(true);
+      setActionError(null);
+
+      const response = await updateGateSecurity(selectedPerson.id, {
+        firstName,
+        surName,
+        email,
+      });
+      console.log("✅ [GateAccess] Update security SUCCESS:", response);
+
+      if (response?.success && response?.securityPersonnel) {
+        setSecurity((previous) =>
+          previous.map((item) =>
+            item.id === response.securityPersonnel.id
+              ? { ...item, ...response.securityPersonnel }
+              : item
+          )
+        );
+        notify(
+          "success",
+          response.message || "Security personnel details updated successfully."
+        );
+        closePersonModal();
+        loadSecurities();
+      } else {
+        setActionError(
+          response?.message || "Could not update security details."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Update security ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setActionError(
+        apiErrorMessage(error, "Could not update security details.")
+      );
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const toggleSecurity = async () => {
+    if (!selectedPerson) return;
+
+    const nextActive = !isSecurityActive(selectedPerson);
+
+    try {
+      setIsSubmittingAction(true);
+      setActionError(null);
+
+      const response = await setGateSecurityStatus(
+        selectedPerson.id,
+        nextActive
+      );
+      console.log("✅ [GateAccess] Security status change SUCCESS:", response);
+
+      if (response?.success) {
+        notify(
+          "success",
+          response.message ||
+            `${fullName(selectedPerson)}'s account is now ${
+              nextActive ? "active" : "inactive"
+            }.`
+        );
+        closePersonModal();
+        loadSecurities();
+      } else {
+        setActionError(response?.message || "Could not update the account.");
+      }
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Security status change ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setActionError(
+        apiErrorMessage(error, "Could not update the account.")
+      );
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const resetSecurityPassword = async () => {
+    if (!selectedPerson) return;
+
+    if (!selectedPerson.email) {
+      setActionError(
+        "This account has no email address. Add one before requesting a reset."
+      );
       return;
     }
 
-    setStaff((previous) =>
-      previous.map((person) =>
-        person.id === selectedStaffId
-          ? { ...person, permissionActive: true }
-          : person
-      )
-    );
+    try {
+      setIsSubmittingAction(true);
+      setActionError(null);
 
-    setSelectedStaffId("");
-    setModal(null);
-    notify(
-      "success",
-      "Demo scanning permission granted. No backend permissions were changed."
-    );
+      const response = await sendPasswordRecovery(selectedPerson.email);
+      console.log("✅ [GateAccess] Password recovery SUCCESS:", response);
+
+      notify(
+        "success",
+        response?.message ||
+          `Password recovery instructions were sent to ${selectedPerson.email}.`
+      );
+      closePersonModal();
+    } catch (error) {
+      console.error(
+        "❌ [GateAccess] Password recovery ERROR:",
+        error?.response?.data || error?.message || error
+      );
+      setActionError(
+        apiErrorMessage(
+          error,
+          "Could not send the password recovery email. Please try again."
+        )
+      );
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
-  const toggleSecurity = (person) => {
-    const nextActive = !isSecurityActive(person);
-    setSecurity((previous) =>
-      previous.map((item) =>
-        item.id === person.id
-          ? {
-              ...item,
-              isActive: nextActive,
-              status: nextActive ? "ACTIVE" : "INACTIVE",
-            }
-          : item
-      )
-    );
-
-    notify(
-      "success",
-      `${fullName(person)}'s demo security status is now ${
-        nextActive ? "active" : "inactive"
-      }.`
-    );
-
-    setModal(null);
-    setSelectedPerson(null);
-  };
-
-  const toggleStaffPermission = (person) => {
-    setStaff((previous) =>
-      previous.map((item) =>
-        item.id === person.id
-          ? { ...item, permissionActive: !item.permissionActive }
-          : item
-      )
-    );
-
-    notify(
-      "success",
-      `${fullName(person)}'s demo scanning permission has been ${
-        person.permissionActive ? "revoked" : "restored"
-      }.`
-    );
-
-    setModal(null);
-    setSelectedPerson(null);
-  };
-
-    const tabs = [
+  const tabs = [
     { id: "overview", label: "Overview", icon: ShieldCheck },
     { id: "security", label: "Gate security", icon: Users },
     { id: "staff", label: "Authorized Staff", icon: UserRoundCheck },
-    { id: "history", label: "Scan history", icon: History },
   ];
-
-  const tabIntro = {
-    overview:
-      "This overview helps administrators monitor school entry activity, keep a clear view of who can scan students, and reduce manual class-attendance work by capturing arrivals as digital gate events.",
-    security:
-      "This tab is where school leaders assign and manage gate security staff who are responsible for student entry scanning and school arrival checks.",
-    staff:
-      "This tab controls which trusted staff members are authorized to support gate scanning and reduce the security team's workload during arrival checks.",
-    history:
-      "This tab records student arrival and return events to help administrators review patterns, support parent notifications, and prepare later attendance follow-up.",
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Page heading */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-800">
-              <ScanLine size={17} />
-              School operations
-            </div>
+        {/* Page header */}
+        <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-gradient-to-r from-[#061541] via-[#0A2463] to-[#123A8F] p-6 text-white shadow-[0_20px_50px_-25px_rgba(7,26,82,0.6)] sm:p-8">
+          <div className="pointer-events-none absolute -right-10 -top-16 -z-10 h-56 w-56 rounded-full border-[32px] border-white/[0.06]" />
+          <div className="pointer-events-none absolute -bottom-24 right-40 -z-10 h-52 w-52 rounded-full bg-cyan-400/10 blur-2xl" />
 
-            <h1 className="text-2xl font-extrabold tracking-tight text-[#071A52] sm:text-3xl">
-              Gate Access Management
-            </h1>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold text-cyan-200 backdrop-blur-md">
+                <ScanLine size={14} />
+                School operations
+              </span>
 
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              This is the admin control center for student gate scanning, school arrival checks, and daily access oversight. It helps your school notify parents when students arrive and reduces the workload of manual class attendance follow-up.
-            </p>
-          </div>
-
-          {isLiveSecurity ? (
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-              <CheckCircle2 size={15} />
-              Gate Security API live
-            </span>
-          ) : (
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-              <Info size={15} />
-              Demo mode · Local fallback
-            </span>
-          )}
-        </div>
-
-        {/* Helpful intro */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#071A52] via-[#0A2463] to-[#123A8F] p-5 text-white sm:p-7">
-          <div className="pointer-events-none absolute -right-8 -top-12 h-48 w-48 rounded-full border-[28px] border-white/5" />
-          <div className="pointer-events-none absolute -bottom-20 right-28 h-44 w-44 rounded-full bg-cyan-400/10 blur-2xl" />
-
-          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-cyan-100">
-                <ShieldCheck size={15} />
-                Your gate, under your control
-              </div>
-
-              <h2 className="text-xl font-bold sm:text-2xl">
-                A safer, smarter school arrival experience.
-              </h2>
+              <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">
+                Gate Access Management
+              </h1>
 
               <p className="mt-2 text-sm leading-6 text-blue-100">
-                Gate access keeps student arrival records in one place, supports parent notifications, and helps the school capture daily movement without heavy manual attendance follow-up for each class.
+                Manage who can scan students at the gate and keep every arrival
+                organized in one place.
               </p>
             </div>
 
-            <div className="relative flex shrink-0 items-center gap-2 self-start rounded-xl border border-white/15 bg-white/10 px-4 py-3 sm:self-center">
-              <ScanLine size={25} className="text-cyan-300" />
-              <div>
-                <p className="text-sm font-bold">Controlled access</p>
-                <p className="mt-0.5 text-xs text-blue-100">
-                  Authorized scanners only
+            <div className="grid grid-cols-2 gap-3 sm:min-w-80">
+              <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-4 backdrop-blur-md">
+                <div className="flex items-center justify-between text-blue-200">
+                  <p className="text-[11px] font-bold uppercase tracking-wider">
+                    Active security
+                  </p>
+                  <ShieldCheck size={15} className="text-emerald-300" />
+                </div>
+                <p className="mt-2 text-3xl font-black tabular-nums">
+                  {isLoadingSecurity ? "…" : activeSecurityCount}
+                </p>
+                <p className="text-[11px] text-blue-200/80">
+                  {isLoadingSecurity
+                    ? "Loading accounts"
+                    : `${security.length} accounts total`}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-4 backdrop-blur-md">
+                <div className="flex items-center justify-between text-blue-200">
+                  <p className="text-[11px] font-bold uppercase tracking-wider">
+                    Authorized staff
+                  </p>
+                  <UserRoundCheck size={15} className="text-cyan-300" />
+                </div>
+                <p className="mt-2 text-3xl font-black tabular-nums">
+                  {isLoadingScanners ? "…" : authorizedScanners.length}
+                </p>
+                <p className="text-[11px] text-blue-200/80">
+                  Can help with scanning
                 </p>
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Feedback */}
         {message && (
@@ -651,66 +873,6 @@ const GateAccess = () => {
           </div>
         )}
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: "Active security",
-              value: activeSecurityCount,
-              note: `${security.length} accounts in total`,
-              icon: ShieldCheck,
-              color: "bg-blue-50 text-blue-800",
-            },
-            {
-              label: "Authorized staff",
-              value: activeStaff.length,
-              note: "Staff with scanning permission",
-              icon: Users,
-              color: "bg-cyan-50 text-cyan-800",
-            },
-            {
-              label: "Today's scans",
-              value: todayHistory.length,
-              note: "Arrival and return events",
-              icon: ScanLine,
-              color: "bg-violet-50 text-violet-800",
-            },
-            {
-              label: "Recent records",
-              value: history.length,
-              note: "Demo history available",
-              icon: History,
-              color: "bg-emerald-50 text-emerald-800",
-            },
-          ].map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <div
-                key={item.label}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">
-                      {item.label}
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold tracking-tight text-[#071A52]">
-                      {item.value}
-                    </p>
-                  </div>
-
-                  <div className={`rounded-xl p-3 ${item.color}`}>
-                    <Icon size={21} />
-                  </div>
-                </div>
-
-                <p className="mt-3 text-xs text-slate-400">{item.note}</p>
-              </div>
-            );
-          })}
-        </div>
-
         {/* Main tabs */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-3 pt-3 sm:px-5">
@@ -740,26 +902,14 @@ const GateAccess = () => {
 
           {/* Overview */}
           {activeTab === "overview" && (
-            <div className="space-y-6 p-5 sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-[#071A52]">
-                    Access overview
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Monitor school entry activity, verify approved scanners, and prepare a clearer workflow for parent notification and automated attendance support.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
-                  <p className="font-semibold text-[#071A52]">Tab note</p>
-                  <p className="mt-1 leading-6">{tabIntro.overview}</p>
-                </div>
-
-                <PrimaryButton onClick={() => openTab("security")}>
-                  <Plus size={17} />
-                  Manage access
-                </PrimaryButton>
+            <div className="space-y-5 p-5 sm:p-6">
+              <div>
+                <h2 className="text-lg font-bold text-[#071A52]">
+                  Access overview
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Choose what you want to manage, or review past gate scans.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -777,11 +927,13 @@ const GateAccess = () => {
                         Security personnel
                       </h3>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
-                        Manage dedicated security accounts and their active
-                        status.
+                        Manage the accounts trusted to scan students at the
+                        gate.
                       </p>
                       <p className="mt-3 text-sm font-semibold text-blue-800">
-                        {activeSecurityCount} active accounts
+                        {isLoadingSecurity
+                          ? "Loading accounts"
+                          : `${activeSecurityCount} active accounts`}
                         <span className="ml-1 transition group-hover:translate-x-1">
                           →
                         </span>
@@ -804,11 +956,13 @@ const GateAccess = () => {
                         Authorized staff
                       </h3>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
-                        Let trusted staff help during busy arrival periods.
-                        Revoke their scanning permission at any time.
+                        Let trusted staff help during busy arrival periods and
+                        revoke their permission at any time.
                       </p>
                       <p className="mt-3 text-sm font-semibold text-cyan-800">
-                        {activeStaff.length} authorized staff
+                        {isLoadingScanners
+                          ? "Loading staff"
+                          : `${authorizedScanners.length} authorized staff`}
                         <span className="ml-1 transition group-hover:translate-x-1">
                           →
                         </span>
@@ -818,80 +972,31 @@ const GateAccess = () => {
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-slate-200">
-                <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-xl bg-emerald-50 p-3 text-emerald-700">
+                    <History size={22} />
+                  </div>
                   <div>
                     <h3 className="font-bold text-[#071A52]">
-                      Recent gate activity
+                      Gate scan history
                     </h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      The latest sample scan records.
+                    <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">
+                      Every verified arrival is logged with the student, time,
+                      and scanning officer. Open the history to review or search
+                      past scans.
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => openTab("history")}
-                    className="text-left text-sm font-semibold text-blue-800 hover:text-cyan-700"
-                  >
-                    View all history →
-                  </button>
                 </div>
 
-                <div className="divide-y divide-slate-100">
-                  {history.slice(0, 3).map((record) => (
-                    <div
-                      key={record.id}
-                      className="flex items-center gap-3 px-4 py-4"
-                    >
-                      <div
-                        className={`rounded-xl p-2.5 ${
-                          record.type === "ARRIVAL"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-orange-50 text-orange-700"
-                        }`}
-                      >
-                        {record.type === "ARRIVAL" ? (
-                          <ArrowDownLeft size={19} />
-                        ) : (
-                          <ArrowUpRight size={19} />
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-800">
-                          {record.studentName}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {record.className} · Scanned by {record.scanner}
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs font-semibold text-slate-700">
-                          {record.time}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {record.type === "ARRIVAL" ? "Arrival" : "Return"}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-cyan-100 bg-cyan-50/70 p-4">
-                <Info size={19} className="mt-0.5 shrink-0 text-cyan-800" />
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">
-                    Remember: access and attendance are different
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Gate scans record a student's gate activity. A missing
-                    scan does not automatically mean the student is absent
-                    from school.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/scan-history")}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#123A8F]"
+                >
+                  <History size={16} />
+                  View scan history
+                </button>
               </div>
             </div>
           )}
@@ -899,19 +1004,14 @@ const GateAccess = () => {
           {/* Security personnel */}
           {activeTab === "security" && (
             <div className="p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-[#071A52]">
                     Gate security team
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Dedicated gate-security accounts for personnel handling student arrival scanning and school-entry checks.
+                    Manage the accounts authorized to scan students at the gate.
                   </p>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
-                  <p className="font-semibold text-[#071A52]">Tab note</p>
-                  <p className="mt-1 leading-6">{tabIntro.security}</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -924,7 +1024,11 @@ const GateAccess = () => {
                   >
                     <RefreshCw
                       size={16}
-                      className={isLoadingSecurity ? "animate-spin text-blue-600" : "text-slate-500"}
+                      className={
+                        isLoadingSecurity
+                          ? "animate-spin text-blue-600"
+                          : "text-slate-500"
+                      }
                     />
                     <span className="hidden sm:inline">Refresh</span>
                   </button>
@@ -945,15 +1049,6 @@ const GateAccess = () => {
                     Add gate security
                   </PrimaryButton>
                 </div>
-              </div>
-
-              <div className="mt-5 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-                <KeyRound size={19} className="shrink-0 text-blue-800" />
-                <p className="text-sm leading-6 text-slate-600">
-                  Security personnel should use dedicated, restricted
-                  accounts. They should not receive academic staff privileges
-                  just to scan QR codes.
-                </p>
               </div>
 
               <div className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
@@ -983,173 +1078,157 @@ const GateAccess = () => {
                   <tbody className="divide-y divide-slate-100">
                     {isLoadingSecurity ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center">
-                          <Loader2
-                            size={28}
-                            className="mx-auto animate-spin text-blue-600"
-                          />
-                          <p className="mt-3 text-sm font-semibold text-slate-700">
-                            Loading security personnel...
-                          </p>
-                        </td>
-                      </tr>
-                    ) : filteredSecurity.map((person) => (
-                      <tr key={person.id} className="hover:bg-slate-50/70">
-                        <td className="px-3 py-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar
-                              firstName={person.firstName}
-                              surName={person.surName}
-                              color="blue"
-                            />
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">
-                                {fullName(person)}
-                              </p>
-                              <p className="mt-0.5 text-xs text-slate-400">
-                                Security personnel
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-3 py-4 text-sm text-slate-600">
-                          {person.loginId || "—"}
-                        </td>
-
-                        <td className="px-3 py-4 text-sm text-slate-600">
-                          {person.email || "—"}
-                        </td>
-
-                        <td className="px-3 py-4">
-                          <StatusBadge
-                            active={isSecurityActive(person)}
-                            activeText={getSecurityStatusText(person)}
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={Loader2}
+                            title="Loading security personnel..."
+                            iconClassName="animate-spin text-blue-600"
                           />
                         </td>
-
-                        <td className="px-3 py-4">
-                          <div className="flex justify-end">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPerson(person);
-                                  setModal("view-security");
-                                }}
-                                className="rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                              >
-                                View staff
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPerson(person);
-                                  setModal("edit-security");
-                                }}
-                                className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
-                              >
-                                Edit staff
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPerson(person);
-                                  setModal("reset-security-password");
-                                }}
-                                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
-                              >
-                                Reset password
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPerson(person);
-                                  setModal("toggle-security");
-                                }}
-                                className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
-                              >
-                                Deactivate account
-                              </button>
-                            </div>
-                          </div>
-                        </td>
                       </tr>
-                    ))}
-
-                    {!isLoadingSecurity && filteredSecurity.length === 0 && (
+                    ) : securityError ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center">
-                          <Users
-                            size={28}
-                            className="mx-auto text-slate-300"
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={AlertCircle}
+                            title="Could not load security personnel"
+                            description={securityError}
+                            iconClassName="text-rose-500"
+                            action={
+                              <button
+                                type="button"
+                                onClick={loadSecurities}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                <RefreshCw size={14} />
+                                Try again
+                              </button>
+                            }
                           />
-                          <p className="mt-3 text-sm font-semibold text-slate-700">
-                            No security personnel found
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Try another search or add security personnel.
-                          </p>
                         </td>
                       </tr>
+                    ) : filteredSecurity.length === 0 ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={Users}
+                            title={
+                              security.length === 0
+                                ? "No security personnel yet"
+                                : "No security personnel found"
+                            }
+                            description={
+                              security.length === 0
+                                ? "Add a gate security account to start scanning students."
+                                : "Try another search term."
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSecurity.map((person) => (
+                        <tr key={person.id} className="hover:bg-slate-50/70">
+                          <td className="px-3 py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar
+                                firstName={person.firstName}
+                                surName={person.surName}
+                                color="blue"
+                              />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                  {fullName(person)}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-400">
+                                  Security personnel
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-3 py-4 text-sm text-slate-600">
+                            {person.loginId || "—"}
+                          </td>
+
+                          <td className="px-3 py-4 text-sm text-slate-600">
+                            {person.email || "—"}
+                          </td>
+
+                          <td className="px-3 py-4">
+                            <StatusBadge
+                              active={isSecurityActive(person)}
+                              activeText={getSecurityStatusText(person)}
+                              inactiveText={getSecurityStatusText(person)}
+                            />
+                          </td>
+
+                          <td className="px-3 py-4">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                aria-label={`More actions for ${fullName(person)}`}
+                                aria-haspopup="menu"
+                                aria-expanded={
+                                  actionsMenu?.person.id === person.id
+                                }
+                                onPointerDown={(event) =>
+                                  event.stopPropagation()
+                                }
+                                onClick={(event) =>
+                                  toggleActionsMenu(event, person)
+                                }
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                              >
+                                <MoreVertical size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
               </div>
-
-              <p className="mt-4 text-xs leading-5 text-slate-400">
-                {isLiveSecurity
-                  ? "Connected to live gate securities API. Creating personnel registers their account and emails credentials."
-                  : "Currently running with local sample data. When backend is reachable, live gate security records will be displayed."}
-              </p>
             </div>
           )}
 
           {/* Authorized staff */}
           {activeTab === "staff" && (
             <div className="p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-[#071A52]">
-                    Authorized Staff
+                    Authorized staff
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Grant gate-scanning access to trusted staff members so they can help during arrival checks and reduce the security team's workload.
+                    Let trusted staff help with arrival scanning, and revoke
+                    their permission whenever needed.
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
-                  <p className="font-semibold text-[#071A52]">Tab note</p>
-                  <p className="mt-1 leading-6">{tabIntro.staff}</p>
-                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={loadScanners}
+                    disabled={isLoadingScanners}
+                    title="Refresh authorized staff"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <RefreshCw
+                      size={16}
+                      className={
+                        isLoadingScanners
+                          ? "animate-spin text-cyan-600"
+                          : "text-slate-500"
+                      }
+                    />
+                    <span className="hidden sm:inline">Refresh</span>
+                  </button>
 
-                <PrimaryButton
-                  onClick={() => {
-                    setSelectedStaffId("");
-                    setModal("authorize-staff");
-                    setMessage(null);
-                  }}
-                >
-                  <UserPlus size={17} />
-                  Add authorized staff
-                </PrimaryButton>
-              </div>
-
-              <div className="mt-5 flex items-start gap-3 rounded-xl border border-cyan-100 bg-cyan-50/70 p-4">
-                <UserRoundCheck
-                  size={19}
-                  className="mt-0.5 shrink-0 text-cyan-800"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">
-                    Flexible scanning permission
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Staff retain their normal school accounts. You can
-                    independently grant, revoke, or restore their gate
-                    scanning permission without deleting their permission
-                    history.
-                  </p>
+                  <PrimaryButton onClick={openAuthorizeStaff}>
+                    <UserPlus size={17} />
+                    Add authorized staff
+                  </PrimaryButton>
                 </div>
               </div>
 
@@ -1158,7 +1237,7 @@ const GateAccess = () => {
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search staff by name, login ID or role..."
+                  placeholder="Search authorized staff by name, login ID or role..."
                   className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
                 />
               </div>
@@ -1170,7 +1249,7 @@ const GateAccess = () => {
                       <th className="px-3 py-3 font-semibold">Staff member</th>
                       <th className="px-3 py-3 font-semibold">Login ID</th>
                       <th className="px-3 py-3 font-semibold">School role</th>
-                      <th className="px-3 py-3 font-semibold">Scan access</th>
+                      <th className="px-3 py-3 font-semibold">Authorized</th>
                       <th className="px-3 py-3 text-right font-semibold">
                         Action
                       </th>
@@ -1178,255 +1257,131 @@ const GateAccess = () => {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {filteredStaff.map((person) => (
-                      <tr key={person.id} className="hover:bg-slate-50/70">
-                        <td className="px-3 py-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar
-                              firstName={person.firstName}
-                              surName={person.surName}
-                              color="cyan"
-                            />
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">
-                                {fullName(person)}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-400">
-                                Existing staff account
-                              </p>
+                    {isLoadingScanners ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={Loader2}
+                            title="Loading authorized staff..."
+                            iconClassName="animate-spin text-cyan-600"
+                          />
+                        </td>
+                      </tr>
+                    ) : scannersError ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={AlertCircle}
+                            title="Could not load authorized staff"
+                            description={scannersError}
+                            iconClassName="text-rose-500"
+                            action={
+                              <button
+                                type="button"
+                                onClick={loadScanners}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                <RefreshCw size={14} />
+                                Try again
+                              </button>
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ) : filteredScanners.length === 0 ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <TableMessage
+                            icon={UserRoundCheck}
+                            title={
+                              authorizedScanners.length === 0
+                                ? "No authorized staff yet"
+                                : "No authorized staff found"
+                            }
+                            description={
+                              authorizedScanners.length === 0
+                                ? "Add a trusted staff member to help with arrival scanning."
+                                : "Try another search term."
+                            }
+                            action={
+                              authorizedScanners.length === 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={openAuthorizeStaff}
+                                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#123A8F]"
+                                >
+                                  <UserPlus size={15} />
+                                  Add authorized staff
+                                </button>
+                              ) : null
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredScanners.map((person) => (
+                        <tr
+                          key={person.id}
+                          className="hover:bg-slate-50/70"
+                        >
+                          <td className="px-3 py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar
+                                firstName={person.firstName}
+                                surName={person.surName}
+                                color="cyan"
+                              />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                  {fullName(person)}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-400">
+                                  {person.accountStatus === "ACTIVE"
+                                    ? "Staff account active"
+                                    : `Account ${(
+                                        person.accountStatus || "inactive"
+                                      ).toLowerCase()}`}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-3 py-4 text-sm text-slate-600">
-                          {person.loginId}
-                        </td>
+                          <td className="px-3 py-4 text-sm text-slate-600">
+                            {person.loginId || "—"}
+                          </td>
 
-                        <td className="px-3 py-4 text-sm text-slate-600">
-                          {formatRole(person.role)}
-                        </td>
+                          <td className="px-3 py-4 text-sm text-slate-600">
+                            {formatRole(person.role)}
+                          </td>
 
-                        <td className="px-3 py-4">
-                          <StatusBadge
-                            active={person.permissionActive}
-                            activeText="Authorized"
-                          />
-                        </td>
+                          <td className="px-3 py-4">
+                            <div className="flex flex-col gap-1">
+                              <StatusBadge active activeText="Authorized" />
+                              <span className="text-[11px] text-slate-400">
+                                Since {formatDate(person.createdAt)}
+                              </span>
+                            </div>
+                          </td>
 
-                        <td className="px-3 py-4">
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPerson(person);
-                                setModal("toggle-staff");
-                              }}
-                              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                                person.permissionActive
-                                  ? "border-rose-100 text-rose-600 hover:bg-rose-50"
-                                  : "border-emerald-100 text-emerald-700 hover:bg-emerald-50"
-                              }`}
-                            >
-                              {person.permissionActive
-                                ? "Revoke access"
-                                : "Grant access"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {filteredStaff.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center">
-                          <Users
-                            size={28}
-                            className="mx-auto text-slate-300"
-                          />
-                          <p className="mt-3 text-sm font-semibold text-slate-700">
-                            No staff members found
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Try a different search.
-                          </p>
-                        </td>
-                      </tr>
+                          <td className="px-3 py-4">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openPersonAction(person, "revoke-staff")
+                                }
+                                className="rounded-lg border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                              >
+                                Revoke access
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
               </div>
-
-              <p className="mt-4 text-xs leading-5 text-slate-400">
-                Only staff eligible under ScholaNode's final authorization
-                policy should be grantable access. Backend enforcement is
-                required before production use.
-              </p>
-            </div>
-          )}
-
-          {/* Scan history */}
-          {activeTab === "history" && (
-            <div className="p-5 sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-[#071A52]">
-                    Gate scan history
-                  </h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Review which students were scanned, when, and by whom so the school can support parent updates and later class attendance follow-up.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
-                  <p className="font-semibold text-[#071A52]">Tab note</p>
-                  <p className="mt-1 leading-6">{tabIntro.history}</p>
-                </div>
-
-                <span className="inline-flex w-fit items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                  <History size={15} />
-                  {filteredHistory.length} records
-                </span>
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px]">
-                <div className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
-                  <Search size={18} className="shrink-0 text-slate-400" />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search student, admission number or scanner..."
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
-                  />
-                </div>
-
-                <div className="relative">
-                  <CalendarDays
-                    size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <select
-                    value={historyDate}
-                    onChange={(event) => setHistoryDate(event.target.value)}
-                    className={`${inputClass} appearance-none pl-9 pr-8`}
-                  >
-                    <option value="all">All dates</option>
-                    <option value="2026-10-20">20 Oct 2026</option>
-                    <option value="2026-10-19">19 Oct 2026</option>
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                </div>
-
-                <div className="relative">
-                  <select
-                    value={historyType}
-                    onChange={(event) => setHistoryType(event.target.value)}
-                    className={`${inputClass} appearance-none pr-8`}
-                  >
-                    <option value="all">All scan types</option>
-                    <option value="ARRIVAL">Arrival</option>
-                    <option value="RETURN">Return</option>
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[850px] text-left">
-                  <thead className="bg-slate-50">
-                    <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                      <th className="px-4 py-3 font-semibold">Student</th>
-                      <th className="px-4 py-3 font-semibold">Class</th>
-                      <th className="px-4 py-3 font-semibold">Scan type</th>
-                      <th className="px-4 py-3 font-semibold">Scanned by</th>
-                      <th className="px-4 py-3 font-semibold">Date & time</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredHistory.map((record) => (
-                      <tr key={record.id} className="hover:bg-slate-50/70">
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-800">
-                            {record.studentName}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            {record.admissionNumber}
-                          </p>
-                        </td>
-
-                        <td className="px-4 py-4 text-sm text-slate-600">
-                          {record.className}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                              record.type === "ARRIVAL"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-orange-50 text-orange-700"
-                            }`}
-                          >
-                            {record.type === "ARRIVAL" ? (
-                              <ArrowDownLeft size={14} />
-                            ) : (
-                              <ArrowUpRight size={14} />
-                            )}
-                            {record.type === "ARRIVAL" ? "Arrival" : "Return"}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-medium text-slate-700">
-                            {record.scanner}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            {record.scannerType}
-                          </p>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-700">
-                            {record.date}
-                          </p>
-                          <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
-                            <Clock3 size={13} />
-                            {record.time}
-                          </p>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {filteredHistory.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center">
-                          <History
-                            size={28}
-                            className="mx-auto text-slate-300"
-                          />
-                          <p className="mt-3 text-sm font-semibold text-slate-700">
-                            No matching scan records
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Try changing the date, scan type, or search term.
-                          </p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="mt-4 text-xs leading-5 text-slate-400">
-                This history is sample data. Production history should come
-                from persisted gate scan records and retain the original
-                scanner identity even after access is revoked.
-              </p>
             </div>
           )}
         </div>
@@ -1435,6 +1390,53 @@ const GateAccess = () => {
           ScholaNode · Gate Access Management
         </p>
       </div>
+
+      {/* Row actions menu */}
+      {actionsMenu && (
+        <div
+          role="menu"
+          aria-label={`Actions for ${fullName(actionsMenu.person)}`}
+          style={{ top: actionsMenu.top, right: actionsMenu.right }}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="fixed z-[60] w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-900/10"
+        >
+          <ActionMenuItem
+            icon={Eye}
+            onClick={() =>
+              openPersonAction(actionsMenu.person, "view-security")
+            }
+          >
+            View staff
+          </ActionMenuItem>
+          <ActionMenuItem
+            icon={Pencil}
+            onClick={() =>
+              openPersonAction(actionsMenu.person, "edit-security")
+            }
+          >
+            Edit staff
+          </ActionMenuItem>
+          <ActionMenuItem
+            icon={KeyRound}
+            onClick={() =>
+              openPersonAction(actionsMenu.person, "reset-security-password")
+            }
+          >
+            Reset password
+          </ActionMenuItem>
+          <ActionMenuItem
+            icon={UserRoundX}
+            danger
+            onClick={() =>
+              openPersonAction(actionsMenu.person, "toggle-security")
+            }
+          >
+            {isSecurityActive(actionsMenu.person)
+              ? "Deactivate account"
+              : "Reactivate account"}
+          </ActionMenuItem>
+        </div>
+      )}
 
       {/* Add security modal */}
       {modal === "add-security" && (
@@ -1450,31 +1452,18 @@ const GateAccess = () => {
         >
           <form onSubmit={createSecurity} className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
-              <ShieldCheck size={19} className="mt-0.5 text-blue-800 shrink-0" />
+              <ShieldCheck size={19} className="mt-0.5 shrink-0 text-blue-800" />
               <p className="text-xs leading-5 text-slate-600">
-                A restricted gate-security account will be created. The system will send the generated login credentials directly to the personnel's email.
+                A restricted gate-security account will be created. The system
+                will send the generated login credentials directly to the
+                personnel's email.
               </p>
             </div>
 
-            {securityModalError && (
-              <div
-                role="alert"
-                className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800"
-              >
-                <AlertCircle size={18} className="mt-0.5 shrink-0 text-rose-600" />
-                <div className="flex-1 text-xs sm:text-sm font-medium leading-5">
-                  {securityModalError}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSecurityModalError(null)}
-                  aria-label="Dismiss error"
-                  className="rounded-md p-1 text-rose-400 hover:bg-rose-100 hover:text-rose-700 transition"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            )}
+            <ErrorNotice
+              message={securityModalError}
+              onDismiss={() => setSecurityModalError(null)}
+            />
 
             <Field label="First name *">
               <input
@@ -1563,8 +1552,14 @@ const GateAccess = () => {
       {modal === "authorize-staff" && (
         <Modal
           title="Authorize staff member"
-          description="Select an existing staff member to grant gate scanning permission."
-          onClose={() => setModal(null)}
+          description="Select an active STAFF member to grant gate scanning permission."
+          onClose={() => {
+            if (!isGranting) {
+              setModal(null);
+              setSelectedStaffId("");
+              setActionError(null);
+            }
+          }}
         >
           <form onSubmit={grantStaffPermission} className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-cyan-100 bg-cyan-50 p-3">
@@ -1573,212 +1568,495 @@ const GateAccess = () => {
                 className="mt-0.5 shrink-0 text-cyan-800"
               />
               <p className="text-xs leading-5 text-slate-600">
-                This demo changes only the staff member's local permission
-                status. It does not grant real scanning access.
+                Scanning permission lets this staff member verify student
+                arrivals at the gate. Their normal school account stays
+                unchanged.
               </p>
             </div>
 
-            <Field label="Select staff member">
-              <select
-                required
-                value={selectedStaffId}
-                onChange={(event) => setSelectedStaffId(event.target.value)}
-                className={inputClass}
-              >
-                <option value="">Choose a staff member</option>
-                {staff
-                  .filter((person) => !person.permissionActive)
-                  .map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {fullName(person)} · {formatRole(person.role)}
-                    </option>
-                  ))}
-              </select>
-            </Field>
+            <ErrorNotice
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
 
-            {staff.every((person) => person.permissionActive) && (
-              <p className="text-sm text-slate-500">
-                All sample staff members already have scanning permission.
-              </p>
+            {!isLoadingStaffOptions && !staffOptionsError && (
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                <Search size={17} className="shrink-0 text-slate-400" />
+                <input
+                  value={staffModalSearch}
+                  onChange={(event) => setStaffModalSearch(event.target.value)}
+                  placeholder="Search staff by name or login ID..."
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                />
+              </div>
             )}
+
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {isLoadingStaffOptions ? (
+                <div className="rounded-xl border border-slate-200 px-4 py-10 text-center">
+                  <Loader2
+                    size={26}
+                    className="mx-auto animate-spin text-cyan-600"
+                  />
+                  <p className="mt-3 text-sm font-semibold text-slate-700">
+                    Loading staff...
+                  </p>
+                </div>
+              ) : staffOptionsError ? (
+                <div className="rounded-xl border border-slate-200 px-4 py-8 text-center">
+                  <AlertCircle
+                    size={26}
+                    className="mx-auto text-rose-500"
+                  />
+                  <p className="mt-3 text-sm font-semibold text-slate-800">
+                    {staffOptionsError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={loadStaffOptions}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <RefreshCw size={14} />
+                    Try again
+                  </button>
+                </div>
+              ) : filteredStaffOptions.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 px-4 py-8 text-center">
+                  <Users size={26} className="mx-auto text-slate-300" />
+                  <p className="mt-3 text-sm font-semibold text-slate-700">
+                    {staffOptions.length === 0
+                      ? "No eligible STAFF members available"
+                      : "No staff match your search"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {staffOptions.length === 0
+                      ? "Every active STAFF member may already have scanning access."
+                      : "Try a different name or login ID."}
+                  </p>
+                </div>
+              ) : (
+                filteredStaffOptions.map((person) => {
+                  const selected = selectedStaffId === person.id;
+
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStaffId(person.id);
+                        if (actionError) setActionError(null);
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                        selected
+                          ? "border-cyan-400 bg-cyan-50/70 ring-2 ring-cyan-500/20"
+                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Avatar
+                        firstName={person.firstName}
+                        surName={person.surName}
+                        color="cyan"
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {fullName(person)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {person.loginId || "No login ID"} ·{" "}
+                          {formatRole(person.role)}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                          selected
+                            ? "border-cyan-500 bg-cyan-500 text-white"
+                            : "border-slate-300 bg-white text-transparent"
+                        }`}
+                      >
+                        <Check size={13} />
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
 
             <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setModal(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                disabled={isGranting}
+                onClick={() => {
+                  setModal(null);
+                  setSelectedStaffId("");
+                  setActionError(null);
+                }}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
-              <PrimaryButton type="submit">
-                <UserRoundCheck size={17} />
-                Grant demo permission
+              <PrimaryButton
+                type="submit"
+                disabled={
+                  !selectedStaffId || isGranting || isLoadingStaffOptions
+                }
+              >
+                {isGranting ? (
+                  <>
+                    <Loader2 size={17} className="animate-spin" />
+                    Granting access...
+                  </>
+                ) : (
+                  <>
+                    <UserRoundCheck size={17} />
+                    Grant permission
+                  </>
+                )}
               </PrimaryButton>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Confirmation modal */}
-      {(modal === "view-security" || modal === "edit-security" || modal === "reset-security-password" || modal === "toggle-security" || modal === "toggle-staff") &&
-        selectedPerson && (
-          <Modal
-            title={
-              modal === "view-security"
-                ? "Gate security details"
-                : modal === "edit-security"
-                  ? "Edit gate security"
-                  : modal === "reset-security-password"
-                    ? "Reset security password"
-                    : modal === "toggle-security"
-                      ? selectedPerson.isActive
-                        ? "Deactivate security account?"
-                        : "Reactivate security account?"
-                      : selectedPerson.permissionActive
-                        ? "Revoke scanning permission?"
-                        : "Restore scanning permission?"
-            }
-            description={fullName(selectedPerson)}
-            onClose={() => {
-              setModal(null);
-              setSelectedPerson(null);
-            }}
-          >
-            {modal === "view-security" && (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Login ID</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{selectedPerson.loginId || "—"}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Email</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{selectedPerson.email || "—"}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Status</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{getSecurityStatusText(selectedPerson)}</p>
-                </div>
-              </div>
-            )}
-
-            {modal === "edit-security" && (
-              <div className="space-y-4">
-                <Field label="First name">
-                  <input
-                    value={selectedPerson.firstName}
-                    onChange={(event) => setSelectedPerson((previous) => ({ ...previous, firstName: event.target.value }))}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Surname">
-                  <input
-                    value={selectedPerson.surName}
-                    onChange={(event) => setSelectedPerson((previous) => ({ ...previous, surName: event.target.value }))}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Email">
-                  <input
-                    type="email"
-                    value={selectedPerson.email || ""}
-                    onChange={(event) => setSelectedPerson((previous) => ({ ...previous, email: event.target.value }))}
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-            )}
-
-            {modal === "reset-security-password" && (
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-slate-700">
-                This demo will generate a new temporary password for the gate security account. Real password reset flows must be handled securely by the backend and delivered in a protected channel.
-              </div>
-            )}
-
-            {(modal === "toggle-security" || modal === "toggle-staff") && (
-              <div className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4">
-                <ShieldAlert
-                  size={21}
-                  className="mt-0.5 shrink-0 text-amber-700"
-                />
-                <p className="text-sm leading-6 text-slate-700">
-                  {modal === "toggle-security"
-                    ? selectedPerson.isActive
-                      ? "This demo will mark the security account inactive. In production, the backend must block that account from scanning."
-                      : "This demo will mark the security account active again. Real reactivation must follow your school's authorization policy."
-                    : selectedPerson.permissionActive
-                      ? "This demo will remove this staff member's scanning permission. Their normal staff account and historical scan records remain unchanged."
-                      : "This demo will restore this staff member's scanning permission."}
+      {/* View security */}
+      {modal === "view-security" && selectedPerson && (
+        <Modal
+          title="Gate security details"
+          description={fullName(selectedPerson)}
+          onClose={closePersonModal}
+        >
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Login ID
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {selectedPerson.loginId || "—"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Email
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {selectedPerson.email || "—"}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Status
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {getSecurityStatusText(selectedPerson)}
                 </p>
               </div>
-            )}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Added
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {formatDate(selectedPerson.createdAt)}
+                </p>
+              </div>
+            </div>
+          </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setModal(null);
-                  setSelectedPerson(null);
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              onClick={closePersonModal}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit security */}
+      {modal === "edit-security" && selectedPerson && (
+        <Modal
+          title="Edit gate security"
+          description={fullName(selectedPerson)}
+          onClose={() => {
+            if (!isSubmittingAction) closePersonModal();
+          }}
+        >
+          <div className="space-y-4">
+            <ErrorNotice
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+
+            <Field label="First name">
+              <input
+                value={selectedPerson.firstName || ""}
+                onChange={(event) => {
+                  if (actionError) setActionError(null);
+                  setSelectedPerson((previous) => ({
+                    ...previous,
+                    firstName: event.target.value,
+                  }));
                 }}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
+                className={inputClass}
+              />
+            </Field>
 
-              {modal === "reset-security-password" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    notify("success", `Demo password reset requested for ${fullName(selectedPerson)}. No real password was changed.`);
-                    setModal(null);
-                    setSelectedPerson(null);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700"
-                >
-                  <KeyRound size={17} />
-                  Confirm reset
-                </button>
-              ) : modal === "edit-security" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    notify("success", `Demo edits saved for ${fullName(selectedPerson)}. Nothing was sent to the backend.`);
-                    setModal(null);
-                    setSelectedPerson(null);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
-                >
+            <Field label="Surname">
+              <input
+                value={selectedPerson.surName || ""}
+                onChange={(event) => {
+                  if (actionError) setActionError(null);
+                  setSelectedPerson((previous) => ({
+                    ...previous,
+                    surName: event.target.value,
+                  }));
+                }}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Email">
+              <input
+                type="email"
+                value={selectedPerson.email || ""}
+                onChange={(event) => {
+                  if (actionError) setActionError(null);
+                  setSelectedPerson((previous) => ({
+                    ...previous,
+                    email: event.target.value,
+                  }));
+                }}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={closePersonModal}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={saveSecurityDetails}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+            >
+              {isSubmittingAction ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Saving changes...
+                </>
+              ) : (
+                <>
                   <CheckCircle2 size={17} />
                   Save changes
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (modal === "toggle-security") {
-                      toggleSecurity(selectedPerson);
-                    } else {
-                      toggleStaffPermission(selectedPerson);
-                    }
-                  }}
-                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white ${
-                    (modal === "toggle-security" && selectedPerson.isActive) ||
-                    (modal === "toggle-staff" && selectedPerson.permissionActive)
-                      ? "bg-rose-600 hover:bg-rose-700"
-                      : "bg-emerald-700 hover:bg-emerald-800"
-                  }`}
-                >
-                  {(modal === "toggle-security" && selectedPerson.isActive) ||
-                  (modal === "toggle-staff" && selectedPerson.permissionActive) ? (
-                    <UserRoundX size={17} />
-                  ) : (
-                    <CheckCircle2 size={17} />
-                  )}
-                  Confirm
-                </button>
+                </>
               )}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reset security password */}
+      {modal === "reset-security-password" && selectedPerson && (
+        <Modal
+          title="Reset security password"
+          description={fullName(selectedPerson)}
+          onClose={() => {
+            if (!isSubmittingAction) closePersonModal();
+          }}
+        >
+          <div className="space-y-4">
+            <ErrorNotice
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-slate-700">
+              A password recovery email will be sent to{" "}
+              <span className="font-semibold">
+                {selectedPerson.email || "this account"}
+              </span>
+              . The officer can follow the instructions to set a new password.
             </div>
-          </Modal>
-        )}
+
+            {!selectedPerson.email && (
+              <p className="text-xs leading-5 text-slate-500">
+                This account has no email address. Add one with Edit staff
+                before requesting a reset.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={closePersonModal}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingAction || !selectedPerson.email}
+              onClick={resetSecurityPassword}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmittingAction ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Sending email...
+                </>
+              ) : (
+                <>
+                  <KeyRound size={17} />
+                  Send recovery email
+                </>
+              )}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Activate / deactivate security */}
+      {modal === "toggle-security" && selectedPerson && (
+        <Modal
+          title={
+            isSecurityActive(selectedPerson)
+              ? "Deactivate security account?"
+              : "Reactivate security account?"
+          }
+          description={fullName(selectedPerson)}
+          onClose={() => {
+            if (!isSubmittingAction) closePersonModal();
+          }}
+        >
+          <div className="space-y-4">
+            <ErrorNotice
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+
+            <div className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <ShieldAlert
+                size={21}
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
+              <p className="text-sm leading-6 text-slate-700">
+                {isSecurityActive(selectedPerson)
+                  ? "This account will be marked inactive and blocked from scanning students at the gate."
+                  : "This account will be marked active again and can resume scanning students."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={closePersonModal}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={toggleSecurity}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 ${
+                isSecurityActive(selectedPerson)
+                  ? "bg-rose-600 hover:bg-rose-700"
+                  : "bg-emerald-700 hover:bg-emerald-800"
+              }`}
+            >
+              {isSubmittingAction ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Updating account...
+                </>
+              ) : isSecurityActive(selectedPerson) ? (
+                <>
+                  <UserRoundX size={17} />
+                  Deactivate account
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={17} />
+                  Reactivate account
+                </>
+              )}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Revoke staff access */}
+      {modal === "revoke-staff" && selectedPerson && (
+        <Modal
+          title="Revoke scanning permission?"
+          description={fullName(selectedPerson)}
+          onClose={() => {
+            if (!isSubmittingAction) closePersonModal();
+          }}
+        >
+          <div className="space-y-4">
+            <ErrorNotice
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+
+            <div className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <ShieldAlert
+                size={21}
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
+              <p className="text-sm leading-6 text-slate-700">
+                This staff member will lose scanning permission. Their normal
+                staff account and past scan records remain unchanged. You can
+                authorize them again later.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={closePersonModal}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingAction}
+              onClick={revokeStaffPermission}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+            >
+              {isSubmittingAction ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Revoking access...
+                </>
+              ) : (
+                <>
+                  <UserRoundX size={17} />
+                  Revoke access
+                </>
+              )}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

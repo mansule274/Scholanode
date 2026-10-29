@@ -1,634 +1,598 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { QRCodeCanvas } from "qrcode.react";
 import {
-  Users,
-  Bell,
-  MessageSquareText,
+  AlertCircle,
+  BellOff,
   BookOpen,
-  ClipboardCheck,
-  QrCode,
-  Download,
-  UserRound,
   CalendarDays,
+  ClipboardCheck,
+  Download,
   GraduationCap,
-  ShieldCheck,
-  Search,
-  Sparkles,
+  QrCode,
+  RefreshCw,
   School,
+  UserRound,
+  Users,
   X,
 } from "lucide-react";
+import { useUserContext } from "../../context/UserContext";
+import { getParentDashboard } from "../people/parentApi";
+import {
+  avatarPalettes,
+  getClassName,
+  getDisplayName,
+  getInitials,
+  getPeriodLabel,
+  getRelationshipLabel,
+  titleCase,
+} from "../parent/childDisplay";
+import ChildStatusBadge from "../parent/ChildStatusBadge";
 
-const STORAGE_KEY = "scholanode:parent-dashboard:v1";
+function getAttendanceSummary(attendance) {
+  const presentDays = Number(attendance?.presentDays) || 0;
+  const absentDays = Number(attendance?.absentDays) || 0;
+  const totalRecordedDays = Number(attendance?.totalRecordedDays) || 0;
+  const rawPercentage = attendance?.percentage;
+  const hasPercentage =
+    rawPercentage !== null &&
+    rawPercentage !== undefined &&
+    rawPercentage !== "" &&
+    Number.isFinite(Number(rawPercentage));
 
-const MOCK_CHILDREN = [
-  {
-    id: "student-001",
-    firstName: "Amina",
-    surName: "Hassan",
-    admissionNumber: "SCH/STU/2026/0041",
-    className: "Primary 5A",
-    attendanceRate: 96,
-    qrToken: "mock-student-token-001",
-    initials: "AH",
-    gradient: "from-blue-600 to-cyan-500",
-  },
-  {
-    id: "student-002",
-    firstName: "Yusuf",
-    surName: "Hassan",
-    admissionNumber: "SCH/STU/2024/0118",
-    className: "Primary 2B",
-    attendanceRate: 92,
-    qrToken: "mock-student-token-002",
-    initials: "YH",
-    gradient: "from-violet-600 to-indigo-500",
-  },
-  {
-    id: "student-003",
-    firstName: "Maryam",
-    surName: "Hassan",
-    admissionNumber: "SCH/STU/2022/0204",
-    className: "Nursery 2",
-    attendanceRate: 98,
-    qrToken: "mock-student-token-003",
-    initials: "MH",
-    gradient: "from-emerald-600 to-teal-500",
-  },
-];
+  const derivedPercentage = hasPercentage
+    ? Math.round(Number(rawPercentage))
+    : totalRecordedDays > 0
+      ? Math.round((presentDays / totalRecordedDays) * 100)
+      : null;
 
-const MOCK_NOTIFICATIONS = [
-  {
-    id: "notification-001",
-    title: "Result published",
-    message: "A new result is available for Amina Hassan.",
-    read: false,
-  },
-  {
-    id: "notification-002",
-    title: "Attendance update",
-    message: "There is a new attendance update for Yusuf Hassan.",
-    read: false,
-  },
-  {
-    id: "notification-003",
-    title: "School reminder",
-    message: "A parent-teacher meeting is scheduled for this week.",
-    read: true,
-  },
-];
+  return {
+    available: attendance?.available !== false,
+    presentDays,
+    absentDays,
+    totalRecordedDays,
+    percentage:
+      derivedPercentage === null
+        ? null
+        : Math.min(100, Math.max(0, derivedPercentage)),
+  };
+}
 
-const MOCK_REQUESTS = [
-  { id: "request-001", status: "IN_PROGRESS" },
-  { id: "request-002", status: "RESOLVED" },
-];
-
-function readStorage() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
-  } catch {
-    return {};
+function getAttendanceTone(percentage) {
+  if (percentage === null) {
+    return { text: "text-slate-400", bar: "bg-slate-300" };
   }
+  if (percentage >= 90) {
+    return {
+      text: "text-emerald-700",
+      bar: "bg-gradient-to-r from-emerald-500 to-teal-400",
+    };
+  }
+  if (percentage >= 75) {
+    return {
+      text: "text-sky-700",
+      bar: "bg-gradient-to-r from-sky-500 to-cyan-400",
+    };
+  }
+  if (percentage >= 50) {
+    return {
+      text: "text-amber-700",
+      bar: "bg-gradient-to-r from-amber-500 to-orange-400",
+    };
+  }
+  return {
+    text: "text-rose-700",
+    bar: "bg-gradient-to-r from-rose-500 to-pink-400",
+  };
 }
 
-function getGreeting() {
-  const hour = new Date().getHours();
+function AttendanceBlock({ attendance, periodLabel }) {
+  const summary = getAttendanceSummary(attendance);
+  const tone = getAttendanceTone(summary.percentage);
 
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (!summary.available) {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-[10px] font-medium text-slate-400">
+        Attendance is not available for this student yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+            <ClipboardCheck size={13} className="shrink-0 text-slate-400" />
+            Attendance
+          </p>
+          {periodLabel && (
+            <p className="mt-0.5 truncate text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+              {periodLabel}
+            </p>
+          )}
+        </div>
+        <p
+          className={`shrink-0 text-lg font-extrabold leading-none ${tone.text}`}
+        >
+          {summary.percentage === null ? "—" : `${summary.percentage}%`}
+        </p>
+      </div>
+
+      <div
+        className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-200"
+        role="progressbar"
+        aria-label="Term attendance progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={summary.percentage ?? 0}
+      >
+        <div
+          className={`h-full rounded-full ${tone.bar}`}
+          style={{ width: `${summary.percentage ?? 0}%` }}
+        />
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+        {summary.totalRecordedDays > 0 ? (
+          <>
+            <span>
+              Present{" "}
+              <b className="font-bold text-slate-700">{summary.presentDays}</b>
+              {" · "}Absent{" "}
+              <b className="font-bold text-slate-700">{summary.absentDays}</b>
+            </span>
+            <span className="shrink-0">
+              {summary.totalRecordedDays}{" "}
+              {summary.totalRecordedDays === 1 ? "day" : "days"}
+            </span>
+          </>
+        ) : (
+          <span>No attendance recorded yet this term</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function SummaryCard({
-  title,
-  value,
-  description,
-  icon: Icon,
-  iconStyle,
+function CardAction({ icon: Icon, label, onClick, primary = false, disabled = false }) {
+  if (primary) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-2 py-2 text-[11px] font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Icon size={13} />
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] font-bold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Icon size={13} />
+      {label}
+    </button>
+  );
+}
+
+function ChildCard({
+  child,
+  palette,
+  periodLabel,
+  onShowQr,
+  onOpenResults,
+  onOpenProfile,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
+    <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md">
+      <div className={`h-1 bg-gradient-to-r ${palette}`} />
 
-          <p className="mt-3 text-3xl font-bold tracking-tight text-[#071A52]">
-            {value}
-          </p>
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${palette} text-sm font-black text-white shadow-sm`}
+          >
+            {getInitials(child)}
+          </div>
 
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            {description}
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-sm font-bold text-[#071A52]">
+              {getDisplayName(child)}
+            </h3>
+            <p className="truncate font-mono text-[11px] text-slate-500">
+              {child?.admissionNumber || "No admission number"}
+            </p>
+          </div>
+
+          <ChildStatusBadge status={child?.admissionStatus} />
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-800">
+            {getClassName(child)}
+          </span>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+            {getRelationshipLabel(child?.relationship)}
+          </span>
+          {child?.receivesNotifications === false && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              <BellOff size={10} />
+              Alerts off
+            </span>
+          )}
+        </div>
+
+        <AttendanceBlock
+          attendance={child?.attendance}
+          periodLabel={periodLabel}
+        />
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <CardAction
+            icon={BookOpen}
+            label="Results"
+            onClick={() => onOpenResults(child)}
+          />
+          <CardAction
+            icon={QrCode}
+            label="QR Code"
+            primary
+            disabled={!child?.qrToken}
+            onClick={() => onShowQr(child)}
+          />
+          <CardAction
+            icon={UserRound}
+            label="Profile"
+            onClick={() => onOpenProfile(child)}
+          />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ChildQrModal({ child, onClose }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  function downloadQrCode() {
+    const canvas = document.getElementById("parent-child-qr-canvas");
+    if (!canvas) return;
+
+    const link = document.createElement("a");
+    link.download = `${getDisplayName(child).replace(/\s+/g, "-")}-QR.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${getDisplayName(child)} QR badge`}
+        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0A2463] text-xs font-black text-white">
+              {getInitials(child)}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-extrabold text-[#071A52]">
+                {getDisplayName(child)}
+              </h2>
+              <p className="truncate text-[11px] text-slate-500">
+                {getClassName(child)} · {child?.admissionNumber || "—"}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close QR badge"
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-4">
+          <div className="flex flex-col items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4">
+            <div className="rounded-xl bg-white p-2 shadow-sm">
+              <QRCodeCanvas
+                id="parent-child-qr-canvas"
+                value={child.qrToken}
+                size={260}
+                level="H"
+                includeMargin
+                className="block h-auto max-w-full"
+                style={{ width: "min(70vw, 260px)", height: "auto" }}
+              />
+            </div>
+            <p className="mt-3 text-center text-[11px] font-semibold text-slate-500">
+              Present this code at the school gate scanner
+            </p>
+          </div>
+
+          <p className="mt-2 text-center text-[10px] leading-4 text-slate-400">
+            Increase your phone brightness if the scanner has difficulty reading
+            the code.
           </p>
         </div>
 
-        <div className={`rounded-xl p-3 ${iconStyle}`}>
-          <Icon size={21} />
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-4">
+          <button
+            type="button"
+            onClick={downloadQrCode}
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#123A8F]"
+          >
+            <Download size={15} />
+            Download
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function ChildAction({
-  icon: Icon,
-  label,
-  onClick,
-  primary = false,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        primary
-          ? "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-900"
-          : "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"
-      }
-    >
-      <Icon size={15} />
-      {label}
-    </button>
-  );
-}
+export default function ParentDashboard() {
+  const { user, school } = useUserContext();
+  const navigate = useNavigate();
 
-export default function ParentDashboard({ user }) {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [children, setChildren] = useState([]);
+  const [parentProfile, setParentProfile] = useState(null);
+  const [childrenCount, setChildrenCount] = useState(null);
+  const [attendancePeriod, setAttendancePeriod] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
   const [selectedChild, setSelectedChild] = useState(null);
-  const [showQrModal, setShowQrModal] = useState(false);
 
-  const [notifications] = useState(() => {
-    const saved = readStorage();
-    return saved.notifications || MOCK_NOTIFICATIONS;
+  const schoolName = school?.schoolName || school?.name || "School";
+  const parentName = useMemo(() => {
+    const name = [parentProfile?.firstName, parentProfile?.surName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (name) return titleCase(name);
+
+    const fallback = [user?.firstName, user?.surName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return titleCase(fallback) || user?.fullName || "Parent";
+  }, [parentProfile, user]);
+
+  const periodLabel = useMemo(
+    () => getPeriodLabel(attendancePeriod),
+    [attendancePeriod]
+  );
+
+  const todayLabel = new Date().toLocaleDateString([], {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 
-  const [requests] = useState(() => {
-    const saved = readStorage();
-    return saved.requests || MOCK_REQUESTS;
-  });
-
-  const schoolName = user?.schoolName || "Al-Hikmah Model School";
-
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          notifications,
-          requests,
-        })
-      );
-    } catch (error) {
-      console.warn("Unable to save dashboard state.", error);
-    }
-  }, [notifications, requests]);
+    let cancelled = false;
 
-  // Allow the parent to close the QR view with the Escape key.
-  useEffect(() => {
-    if (!showQrModal) return undefined;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
 
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        setShowQrModal(false);
+      try {
+        const payload = await getParentDashboard();
+        if (cancelled) return;
+
+        const dashboard = payload?.data || {};
+        const list = Array.isArray(dashboard.children) ? dashboard.children : [];
+
+        setChildren(list);
+        setParentProfile(dashboard.parent || null);
+        setAttendancePeriod(dashboard.attendancePeriod || null);
+        setChildrenCount(
+          Number.isFinite(Number(dashboard?.summary?.childrenCount))
+            ? Number(dashboard.summary.childrenCount)
+            : list.length
+        );
+      } catch (requestError) {
+        if (cancelled) return;
+
+        setChildren([]);
+        setParentProfile(null);
+        setAttendancePeriod(null);
+        setChildrenCount(null);
+        setError(
+          requestError?.response?.data?.message ||
+            "We could not load your dashboard. Check your connection and try again."
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
+    }, 0);
 
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
+      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [showQrModal]);
-
-  const unreadCount = notifications.filter(
-    (notification) => !notification.read
-  ).length;
-
-  const openRequests = requests.filter(
-    (request) => request.status !== "RESOLVED"
-  ).length;
-
-  const visibleChildren = MOCK_CHILDREN.filter((child) => {
-    const query = searchTerm.trim().toLowerCase();
-
-    if (!query) return true;
-
-    return (
-      `${child.firstName} ${child.surName}`
-        .toLowerCase()
-        .includes(query) ||
-      child.className.toLowerCase().includes(query) ||
-      child.admissionNumber.toLowerCase().includes(query)
-    );
-  });
-
-  function openChildQr(child) {
-    setSelectedChild(child);
-    setShowQrModal(true);
-  }
-
-  function closeQrModal() {
-    setShowQrModal(false);
-  }
-
-  function downloadQrCode() {
-    const canvas = document.getElementById(
-      "parent-student-qr-canvas"
-    );
-
-    if (!canvas || !selectedChild) return;
-
-    const link = document.createElement("a");
-
-    link.download = `${selectedChild.firstName}-${selectedChild.surName}-QR.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  }
+  }, [refreshToken]);
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-800 sm:px-6 sm:py-8 lg:px-8">
-      <div className="mx-auto max-w-[1500px] space-y-8">
-        {/* Welcome section */}
-        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#071A52] via-[#0A2463] to-[#123A8F] p-6 text-white shadow-sm sm:p-8">
-          <div className="pointer-events-none absolute -right-12 -top-20 h-60 w-60 rounded-full border-[32px] border-white/5" />
+    <div className="min-h-full bg-slate-50/70 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] p-5 text-white shadow-sm sm:p-6">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full border-[30px] border-white/[0.06]" />
+          <div className="pointer-events-none absolute -bottom-20 right-24 h-44 w-44 rounded-full bg-cyan-400/[0.08] blur-2xl" />
 
-          <div className="pointer-events-none absolute -bottom-24 right-36 h-48 w-48 rounded-full bg-cyan-400/10 blur-2xl" />
-
-          <div className="relative z-10 flex items-center justify-between gap-6">
-            <div className="max-w-2xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-blue-100">
-                <Sparkles size={14} />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-100">
+                <GraduationCap size={12} />
                 Parent portal
               </div>
-
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                {getGreeting()}!
+              <h1 className="mt-2 text-xl font-extrabold tracking-tight sm:text-2xl">
+                Welcome back, {parentName}
               </h1>
-
-              <p className="mt-2 text-sm leading-6 text-blue-100 sm:text-base">
-                Welcome to your parent dashboard. Keep track of your
-                children's academic progress, attendance, and school
-                information in one place.
-              </p>
-
-              <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-blue-100">
-                <span className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2">
-                  <School size={15} />
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-blue-100">
+                <span className="inline-flex items-center gap-1.5">
+                  <School size={13} />
                   {schoolName}
                 </span>
-
-                <span className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2">
-                  <CalendarDays size={15} />
-                  {new Intl.DateTimeFormat("en-NG", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  }).format(new Date())}
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays size={13} />
+                  {todayLabel}
                 </span>
               </div>
             </div>
 
-            <div className="hidden shrink-0 items-center justify-center md:flex">
-              <div className="flex h-28 w-28 items-center justify-center rounded-3xl border border-white/15 bg-white/10">
-                <GraduationCap size={58} strokeWidth={1.4} />
+            <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-sm font-black">
+                <Users size={19} />
+              </span>
+              <div>
+                <p className="text-lg font-extrabold leading-none">
+                  {childrenCount ?? "—"}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-blue-200">
+                  Linked {childrenCount === 1 ? "child" : "children"}
+                </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Overview cards */}
         <section>
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-[#071A52]">
-              Dashboard overview
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              A quick summary of your parent account.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <SummaryCard
-              title="Linked children"
-              value={MOCK_CHILDREN.length}
-              description="Students connected to your account"
-              icon={Users}
-              iconStyle="bg-blue-50 text-blue-700"
-            />
-
-            <SummaryCard
-              title="Unread notifications"
-              value={unreadCount}
-              description="Updates waiting for your attention"
-              icon={Bell}
-              iconStyle="bg-violet-50 text-violet-700"
-            />
-
-            <SummaryCard
-              title="Open requests"
-              value={openRequests}
-              description="Requests not yet resolved"
-              icon={MessageSquareText}
-              iconStyle="bg-amber-50 text-amber-700"
-            />
-          </div>
-        </section>
-
-        {/* Children section */}
-        <section>
-          <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-[#071A52]">
-                My Children
+              <h2 className="text-lg font-extrabold text-[#071A52]">
+                My children
               </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Select an action to access a child's school information.
+              <p className="mt-0.5 text-xs text-slate-500">
+                Students linked to your parent account.
               </p>
             </div>
 
-            <div className="relative w-full sm:max-w-xs">
-              <Search
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search children..."
-                aria-label="Search children"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => setRefreshToken((value) => value + 1)}
+              disabled={loading}
+              aria-label="Refresh children"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
           </div>
 
-          {visibleChildren.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
-              <Users className="mx-auto text-slate-400" size={30} />
-
-              <h3 className="mt-3 font-semibold text-slate-800">
-                No matching children
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Try searching with another name, class, or admission number.
+          {error ? (
+            <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                <AlertCircle size={20} />
+              </div>
+              <p className="mt-3 text-sm font-bold text-slate-800">
+                Your dashboard could not be loaded
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={() => setRefreshToken((value) => value + 1)}
+                className="mt-4 cursor-pointer rounded-xl bg-[#071A52] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#123A8F]"
+              >
+                Try again
+              </button>
+            </div>
+          ) : loading ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 animate-pulse rounded-2xl bg-slate-100" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-32 animate-pulse rounded bg-slate-100" />
+                      <div className="h-2.5 w-20 animate-pulse rounded bg-slate-100" />
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="h-12 animate-pulse rounded-xl bg-slate-100" />
+                    <div className="h-12 animate-pulse rounded-xl bg-slate-100" />
+                  </div>
+                  <div className="mt-3 h-8 animate-pulse rounded-xl bg-slate-100" />
+                </div>
+              ))}
+            </div>
+          ) : children.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center shadow-sm">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <Users size={20} />
+              </div>
+              <p className="mt-3 text-sm font-bold text-slate-800">
+                No children linked yet
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+                Contact your school administrator to link your children to this
+                account.
               </p>
             </div>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3">
-              {visibleChildren.map((child) => (
-                <article
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {children.map((child, index) => (
+                <ChildCard
                   key={child.id}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
-                >
-                  <div className="h-1.5 bg-gradient-to-r from-blue-700 via-blue-500 to-cyan-400" />
-
-                  <div className="p-5">
-                    {/* Student identity */}
-                    <div className="flex items-start gap-4">
-                      <div
-                        className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${child.gradient} text-lg font-bold text-white shadow-sm`}
-                      >
-                        {child.initials}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-base font-bold text-[#071A52]">
-                          {child.firstName} {child.surName}
-                        </h3>
-
-                        <p className="mt-1 break-all text-xs text-slate-500">
-                          {child.admissionNumber}
-                        </p>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
-                            {child.className}
-                          </span>
-
-                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Active
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Attendance summary */}
-                    <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                          <ClipboardCheck size={17} />
-                          Attendance
-                        </div>
-
-                        <span className="text-xl font-bold text-[#071A52]">
-                          {child.attendanceRate}%
-                        </span>
-                      </div>
-
-                      <div
-                        className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"
-                        role="progressbar"
-                        aria-label={`${child.firstName}'s demo attendance rate`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={child.attendanceRate}
-                      >
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all"
-                          style={{
-                            width: `${child.attendanceRate}%`,
-                          }}
-                        />
-                      </div>
-
-                      <p className="mt-2 text-[11px] text-slate-500">
-                        Demonstration data — actual attendance will come
-                        from school records.
-                      </p>
-                    </div>
-
-                    {/* Results, Attendance, QR Code and Profile */}
-                    <div className="mt-5 grid grid-cols-2 gap-2">
-                      <ChildAction
-                        icon={BookOpen}
-                        label="Results"
-                        primary
-                      />
-
-                      <ChildAction
-                        icon={ClipboardCheck}
-                        label="Attendance"
-                      />
-
-                      <ChildAction
-                        icon={QrCode}
-                        label="QR Code"
-                        onClick={() => openChildQr(child)}
-                      />
-
-                      <ChildAction
-                        icon={UserRound}
-                        label="Profile"
-                      />
-                    </div>
-                  </div>
-                </article>
+                  child={child}
+                  palette={avatarPalettes[index % avatarPalettes.length]}
+                  periodLabel={periodLabel}
+                  onShowQr={setSelectedChild}
+                  onOpenResults={(item) =>
+                    navigate(`/children/${item.id}/results`)
+                  }
+                  onOpenProfile={(item) =>
+                    navigate(`/children/${item.id}/profile`)
+                  }
+                />
               ))}
             </div>
           )}
         </section>
-
-        {/* Footer */}
-        <footer className="flex flex-col gap-2 border-t border-slate-200 pt-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            © {new Date().getFullYear()} ScholaNode. All rights reserved.
-          </p>
-
-          <p className="inline-flex items-center gap-1.5">
-            <ShieldCheck size={14} />
-            Parent portal
-          </p>
-        </footer>
       </div>
 
-      {/* Responsive student QR modal */}
-      {showQrModal && selectedChild && (
-        <div
-          className="fixed inset-0 z-[100] flex items-stretch justify-center bg-slate-950/80 backdrop-blur-sm sm:items-center sm:overflow-y-auto sm:bg-slate-950/60 sm:p-4"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              closeQrModal();
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="parent-qr-title"
-            className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:my-auto sm:h-auto sm:max-h-[92dvh] sm:max-w-md sm:rounded-3xl"
-          >
-            {/* Modal header */}
-            <div className="relative shrink-0 overflow-hidden bg-gradient-to-r from-[#071A52] to-[#123A8F] px-5 py-4 text-white sm:px-6 sm:py-6">
-              <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full border-[24px] border-white/5" />
-
-              <div className="relative flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-blue-100">
-                    <QrCode size={14} />
-                    Student identification
-                  </div>
-
-                  <h2
-                    id="parent-qr-title"
-                    className="mt-2 text-lg font-bold sm:mt-3 sm:text-xl"
-                  >
-                    Student QR Code
-                  </h2>
-
-                  <p className="mt-1 truncate text-sm text-blue-100">
-                    {selectedChild.firstName} {selectedChild.surName}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={closeQrModal}
-                  className="shrink-0 rounded-xl bg-white/10 p-2.5 text-white transition hover:bg-white/20"
-                  aria-label="Close QR code"
-                >
-                  <X size={21} />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable student pass */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="flex flex-1 flex-col items-center justify-center px-4 py-4 sm:px-6 sm:py-6">
-                {/* Student identity */}
-                <div className="mb-4 flex w-full items-center justify-center gap-3 sm:mb-5">
-                  <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${selectedChild.gradient} font-bold text-white`}
-                  >
-                    {selectedChild.initials}
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="truncate font-bold text-[#071A52]">
-                      {selectedChild.firstName} {selectedChild.surName}
-                    </p>
-
-                    <p className="mt-0.5 text-sm text-slate-500">
-                      {selectedChild.className}
-                    </p>
-
-                    <p className="mt-0.5 break-all text-xs text-slate-500">
-                      {selectedChild.admissionNumber}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Large QR code */}
-                <div className="flex w-full flex-col items-center rounded-2xl border border-slate-200 bg-slate-50 px-2 py-4 sm:px-4 sm:py-5">
-                  <div className="flex max-w-full items-center justify-center rounded-xl bg-white p-2 shadow-sm sm:p-3">
-                    <QRCodeCanvas
-                      id="parent-student-qr-canvas"
-                      value={selectedChild.qrToken}
-                      size={320}
-                      level="H"
-                      includeMargin
-                      className="block h-auto max-w-full"
-                      style={{
-                        width: "min(78vw, 320px)",
-                        height: "auto",
-                      }}
-                    />
-                  </div>
-
-                  <p className="mt-3 text-center text-xs font-medium text-slate-500">
-                    Present this code to the school gate scanner
-                  </p>
-                </div>
-
-                <p className="mt-3 max-w-sm text-center text-xs leading-5 text-slate-500">
-                  Increase your phone brightness if the scanner has
-                  difficulty reading the code.
-                </p>
-              </div>
-
-              {/* Actions remain easy to reach */}
-              <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 sm:pt-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={downloadQrCode}
-                    className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0A2463] px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-900"
-                  >
-                    <Download size={17} />
-                    Download QR
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={closeQrModal}
-                    className="min-h-12 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <p className="mt-2 text-center text-[10px] leading-4 text-amber-700">
-                  Demo QR code only. Real student verification requires a
-                  secure backend-generated token.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {selectedChild && (
+        <ChildQrModal
+          child={selectedChild}
+          onClose={() => setSelectedChild(null)}
+        />
       )}
     </div>
   );

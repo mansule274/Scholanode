@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
   ChevronDown,
+  LayoutDashboard,
+  Loader2,
+  LogOut,
   Menu,
   ShieldCheck,
+  UserRound,
   X,
 } from 'lucide-react';
 import { useUserContext } from '../context/UserContext';
@@ -29,6 +33,9 @@ const sectionToneClasses = {
  */
 export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const accountMenuRef = useRef(null);
   const navigate = useNavigate();
 
   const { user, logout } = useUserContext();
@@ -75,12 +82,42 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
   const initials = getInitials();
 
   const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setAccountOpen(false);
     try {
       if (logout) await logout();
     } finally {
+      setLoggingOut(false);
       navigate('/', { replace: true });
     }
   };
+
+  useEffect(() => {
+    if (!accountOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (
+        accountMenuRef.current &&
+        !accountMenuRef.current.contains(event.target)
+      ) {
+        setAccountOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setAccountOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [accountOpen]);
 
   const renderNavItems = (items) => {
     return (
@@ -240,15 +277,102 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
                 <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-red-500" />
               </Link>
 
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A2463] text-xs font-bold text-white">
-                  {initials}
-                </div>
-                <div className="hidden text-left sm:block">
-                  <p className="text-xs font-bold text-slate-700">{displayName}</p>
-                  <p className="text-[10px] text-slate-400">{displayRole}</p>
-                </div>
-                <ChevronDown size={14} className="hidden text-slate-400 sm:block" />
+              <div className="relative" ref={accountMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setAccountOpen((value) => !value)}
+                  aria-haspopup="menu"
+                  aria-expanded={accountOpen}
+                  aria-label="Open account menu"
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-2 py-1.5 transition ${
+                    accountOpen
+                      ? 'border-blue-300 ring-4 ring-blue-100/70'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A2463] text-xs font-bold text-white">
+                    {initials}
+                  </div>
+                  <div className="hidden max-w-[150px] text-left sm:block">
+                    <p className="truncate text-xs font-bold text-slate-700">{displayName}</p>
+                    <p className="truncate text-[10px] text-slate-400">{displayRole}</p>
+                  </div>
+                  <ChevronDown
+                    size={14}
+                    className={`hidden text-slate-400 transition-transform sm:block ${
+                      accountOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {accountOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Account menu"
+                    className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
+                  >
+                    <div className="border-b border-slate-100 bg-slate-50/70 p-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0A2463] text-sm font-bold text-white">
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-800">{displayName}</p>
+                          <p className="truncate text-[11px] font-medium text-slate-500">{displayRole}</p>
+                          {(user?.email || user?.loginId) && (
+                            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                              {user.email || user.loginId}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-1.5">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountOpen(false);
+                          navigate('/profile');
+                        }}
+                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <UserRound size={15} className="text-slate-400" />
+                        My profile
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountOpen(false);
+                          navigate('/dashboard');
+                        }}
+                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <LayoutDashboard size={15} className="text-slate-400" />
+                        Dashboard
+                      </button>
+                    </div>
+
+                    <div className="border-t border-slate-100 p-1.5">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={handleLogout}
+                        disabled={loggingOut}
+                        className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {loggingOut ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <LogOut size={15} />
+                        )}
+                        {loggingOut ? 'Signing out...' : 'Log out'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
