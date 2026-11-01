@@ -3,6 +3,8 @@ import { useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
+  Building2,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -16,16 +18,17 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { createContactInquiry } from './contactInquiryApi';
+
 const MAX_MESSAGE_LENGTH = 2000;
 
 const CATEGORIES = [
   { value: 'GENERAL_INQUIRY', label: 'General inquiry' },
   { value: 'SCHOOL_REGISTRATION', label: 'School registration' },
-  { value: 'SUBSCRIPTION_PAYMENT', label: 'Subscription & payment' },
+  { value: 'ACCOUNT_ACTIVATION', label: 'Account activation' },
+  { value: 'SUBSCRIPTION_AND_BILLING', label: 'Subscription & billing' },
   { value: 'TECHNICAL_SUPPORT', label: 'Technical support' },
-  { value: 'PARTNERSHIP', label: 'Partnership & business' },
-  { value: 'SUGGESTION', label: 'Suggestion' },
-  { value: 'BUG_REPORT', label: 'Report a problem' },
+  { value: 'PARTNERSHIP', label: 'Partnership' },
   { value: 'OTHER', label: 'Other' },
 ];
 
@@ -35,7 +38,7 @@ const INITIAL_FORM = {
   category: 'GENERAL_INQUIRY',
   subject: '',
   message: '',
-  contactConsent: false,
+  allowEmailReply: false,
 };
 
 function validateForm(form) {
@@ -47,17 +50,19 @@ function validateForm(form) {
   const message = form.message.trim();
 
   if (!fullName) {
-    errors.fullName = 'Please enter your full name.';
+    errors.fullName = 'Full name is required.';
   } else if (fullName.length < 2 || fullName.length > 100) {
-    errors.fullName = 'Your name must contain 2–100 characters.';
+    errors.fullName = 'Full name must be between 2 and 100 characters.';
   }
 
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (email && email.length > 255) {
+    errors.email = 'Email address must be at most 255 characters.';
+  } else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Please enter a valid email address.';
   }
 
-  if (form.contactConsent && !email) {
-    errors.email = 'An email address is required if you want an email reply.';
+  if (form.allowEmailReply && !email) {
+    errors.email = 'An email address is required when you request an email reply.';
   }
 
   if (!CATEGORIES.some((item) => item.value === form.category)) {
@@ -65,24 +70,20 @@ function validateForm(form) {
   }
 
   if (!subject) {
-    errors.subject = 'Please enter a subject.';
+    errors.subject = 'Subject is required.';
   } else if (subject.length < 3 || subject.length > 150) {
-    errors.subject = 'The subject must contain 3–150 characters.';
+    errors.subject = 'Subject must be between 3 and 150 characters.';
   }
 
   if (!message) {
-    errors.message = 'Please enter your message.';
+    errors.message = 'Message is required.';
   } else if (message.length < 10) {
-    errors.message = 'Please provide at least 10 characters.';
+    errors.message = 'Message must be at least 10 characters.';
   } else if (message.length > MAX_MESSAGE_LENGTH) {
-    errors.message = `Your message cannot exceed ${MAX_MESSAGE_LENGTH} characters.`;
+    errors.message = `Message must be at most ${MAX_MESSAGE_LENGTH} characters.`;
   }
 
   return errors;
-}
-
-function getCategoryLabel(value) {
-  return CATEGORIES.find((item) => item.value === value)?.label || value;
 }
 
 export default function ContactScholaNode() {
@@ -90,6 +91,7 @@ export default function ContactScholaNode() {
 
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
   const [submissionState, setSubmissionState] = useState('idle');
   const [submittedInquiry, setSubmittedInquiry] = useState(null);
 
@@ -104,39 +106,55 @@ export default function ContactScholaNode() {
       [field]: '',
     }));
 
+    setSubmitError('');
     setSubmissionState('idle');
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     const nextErrors = validateForm(formData);
     setErrors(nextErrors);
+    setSubmitError('');
 
     if (Object.keys(nextErrors).length > 0) {
       setSubmissionState('idle');
       return;
     }
 
-    // Mock only: connect this to the public backend endpoint later.
-    const inquiryPayload = {
-      ...formData,
+    const email = formData.email.trim();
+
+    const payload = {
       fullName: formData.fullName.trim(),
-      email: formData.email.trim() || null,
+      ...(email ? { email } : {}),
+      category: formData.category,
       subject: formData.subject.trim(),
       message: formData.message.trim(),
-      contactConsent: Boolean(formData.contactConsent),
-      status: 'NEW',
-      createdAt: new Date().toISOString(),
+      allowEmailReply: Boolean(formData.allowEmailReply),
     };
 
-    setSubmittedInquiry(inquiryPayload);
-    setSubmissionState('success');
+    setSubmissionState('submitting');
+
+    try {
+      const response = await createContactInquiry(payload);
+      setSubmittedInquiry({
+        ...(response?.data || {}),
+        message: response?.message || '',
+      });
+      setSubmissionState('success');
+    } catch (requestError) {
+      setSubmitError(
+        requestError?.response?.data?.message ||
+          'We could not send your message. Please try again.'
+      );
+      setSubmissionState('idle');
+    }
   };
 
   const resetForm = () => {
     setFormData(INITIAL_FORM);
     setErrors({});
+    setSubmitError('');
     setSubmittedInquiry(null);
     setSubmissionState('idle');
   };
@@ -342,26 +360,31 @@ export default function ContactScholaNode() {
                   </div>
 
                   <h3 className="mt-5 text-2xl font-black text-[#071A52]">
-                    Message prepared successfully
+                    Message sent successfully
                   </h3>
 
                   <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-                    Your form passed validation. The public submission API
-                    has not been connected yet, so your inquiry has not
-                    actually been sent or saved.
+                    {submittedInquiry?.message ||
+                      'Your inquiry has been submitted successfully. Our team will review it and respond when appropriate.'}
                   </p>
 
-                  <div className="mx-auto mt-6 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
-                    <p className="text-sm font-semibold text-amber-900">
-                      Frontend preview only
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-amber-800">
-                      Category: {getCategoryLabel(submittedInquiry.category)}
-                      <br />
-                      Email reply consent:{' '}
-                      {submittedInquiry.contactConsent ? 'Yes' : 'No'}
-                    </p>
-                  </div>
+                  {(submittedInquiry?.subject || submittedInquiry?.id) && (
+                    <div className="mx-auto mt-6 max-w-md rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+                      <p className="text-sm font-semibold text-slate-800">
+                        Your inquiry
+                      </p>
+                      {submittedInquiry?.subject && (
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          {submittedInquiry.subject}
+                        </p>
+                      )}
+                      {submittedInquiry?.id && (
+                        <p className="mt-2 break-all text-xs text-slate-500">
+                          Reference: {submittedInquiry.id}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
                     <button
@@ -556,9 +579,9 @@ export default function ContactScholaNode() {
                     <label className="flex cursor-pointer items-start gap-3">
                       <input
                         type="checkbox"
-                        checked={formData.contactConsent}
+                        checked={formData.allowEmailReply}
                         onChange={(event) =>
-                          updateField('contactConsent', event.target.checked)
+                          updateField('allowEmailReply', event.target.checked)
                         }
                         className="mt-0.5 h-4 w-4 shrink-0 accent-[#123A8F]"
                       />
@@ -592,6 +615,15 @@ export default function ContactScholaNode() {
                   </div>
 
                   {/* Submit */}
+                  {submitError && (
+                    <div
+                      role="alert"
+                      className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium leading-6 text-red-700"
+                    >
+                      {submitError}
+                    </div>
+                  )}
+
                   <button
                     type="submit"
                     disabled={submissionState === 'submitting'}
@@ -618,6 +650,36 @@ export default function ContactScholaNode() {
             </div>
           </section>
         </div>
+
+        {/* About HumNode */}
+        <section className="mt-8 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:mt-10 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex items-start gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[#123A8F]">
+              <Building2 size={20} />
+            </div>
+
+            <div>
+              <h2 className="text-base font-bold text-[#071A52]">
+                About HumNode
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+                HumNode is the company behind ScholaNode. We build tools that
+                help schools manage people, academics, and communication in
+                one connected place.
+              </p>
+            </div>
+          </div>
+
+          <a
+            href="https://masjiba.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-[#071A52] transition hover:border-slate-300 hover:bg-slate-50 sm:self-center"
+          >
+            Visit HumNode Website
+            <ArrowUpRight size={16} />
+          </a>
+        </section>
 
         {/* Footer */}
         <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">

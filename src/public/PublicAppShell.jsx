@@ -1,9 +1,9 @@
 import { Link, NavLink } from 'react-router-dom';
 
 const navigation = [
-  { label: 'Home', to: '/' },
   { label: 'Features', to: '/features' },
   { label: 'Pricing', to: '/pricing' },
+  { label: 'About Us', to: '/about' },
   { label: 'Watch Demo', to: '/watch-demo' },
   { label: 'Contact', to: '/contact' },
 ];

@@ -8,6 +8,7 @@ import HomePage from './public/pages/HomePage';
 import FeaturesPage from './public/pages/FeaturesPage';
 import PricingPage from './public/pages/PricingPage';
 import ContactPage from './public/pages/ContactPage';
+import AboutUs from './public/pages/AboutUs';
 import SchoolContactPage from './public/pages/SchoolContactPage';
 import SchoolLoginPage from './public/pages/SchoolLoginPage';
 import WatchDemoPage from './public/pages/WatchDemoPage';
@@ -81,6 +82,7 @@ function PublicRoutes() {
       <Route path="/features" element={<PublicAppShell><FeaturesPage /></PublicAppShell>} />
       <Route path="/pricing" element={<PublicAppShell><PricingPage /></PublicAppShell>} />
       <Route path="/contact" element={<PublicAppShell><ContactPage /></PublicAppShell>} />
+      <Route path="/about" element={<PublicAppShell><AboutUs /></PublicAppShell>} />
       <Route path="/school-contact" element={<PublicAppShell><SchoolContactPage /></PublicAppShell>} />
       <Route path="/school-login" element={<PublicAppShell><SchoolLoginPage /></PublicAppShell>} />
       <Route path="/watch-demo" element={<PublicAppShell><WatchDemoPage /></PublicAppShell>} />
