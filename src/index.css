@@ -22,6 +22,17 @@
   }
 }
 
+@keyframes sn-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-sn-float {
   animation: sn-float 7s ease-in-out infinite;
 }
@@ -30,9 +41,14 @@
   animation: sn-ring 2.6s ease-out infinite;
 }
 
+.animate-sn-fade-up {
+  animation: sn-fade-up 0.5s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-sn-float,
-  .animate-sn-ring {
+  .animate-sn-ring,
+  .animate-sn-fade-up {
     animation: none;
   }
 }

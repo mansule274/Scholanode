@@ -1,42 +1,50 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
   GraduationCap,
   LoaderCircle,
   LockKeyhole,
+  Mail,
   MessageSquareText,
+  Phone,
+  SearchX,
   Send,
   ShieldCheck,
 } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
+import { getSchoolByCode } from '../schoolLookupApi';
+import {
+  formatOwnershipType,
+  formatSchoolLevel,
+  getSchoolInitials,
+} from '../schoolDisplay';
+import SchoolSearch from '../components/SchoolSearch';
 
 const MAX_MESSAGE_LENGTH = 2000;
 
 export default function SchoolContactPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  const school = location.state?.school || {};
+  const candidateSchool = location.state?.school;
+  const stateSchool =
+    candidateSchool && (candidateSchool.schoolCode || candidateSchool.schoolName)
+      ? candidateSchool
+      : null;
+  const codeFromUrl = (searchParams.get('code') || '').trim();
 
-  const schoolName =
-    school.schoolName || school.name || 'Your School';
-
-  const schoolCode =
-    school.schoolCode || school.code || 'School code unavailable';
-
-  const schoolId = school.id || school.schoolId;
-
-  const logoUrl =
-    school.logoUrl || school.logo_url || null;
-
-  const initials =
-    schoolName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((word) => word.charAt(0).toUpperCase())
-      .join('') || 'S';
+  const [school, setSchool] = useState(stateSchool);
+  const [schoolStatus, setSchoolStatus] = useState(
+    stateSchool ? 'ready' : codeFromUrl ? 'loading' : 'missing'
+  );
+  const [schoolError, setSchoolError] = useState('');
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -47,6 +55,90 @@ export default function SchoolContactPage() {
 
   const [errors, setErrors] = useState({});
   const [submissionState, setSubmissionState] = useState('idle');
+
+  const activeSchool = school || stateSchool;
+  const resolvedStatus = activeSchool
+    ? 'ready'
+    : schoolStatus === 'error'
+      ? 'error'
+      : codeFromUrl
+        ? 'loading'
+        : 'missing';
+
+  useEffect(() => {
+    if (stateSchool || !codeFromUrl) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await getSchoolByCode(codeFromUrl);
+
+        if (cancelled) return;
+
+        if (!result) {
+          setSchoolError(
+            'No school matches that code. Check the code and try again.'
+          );
+          setSchoolStatus('error');
+          return;
+        }
+
+        setSchool(result);
+        setSchoolError('');
+        setSchoolStatus('ready');
+      } catch (error) {
+        if (cancelled) return;
+
+        setSchoolError(
+          error?.response?.data?.message ||
+            'We could not load this school. Check your connection and try again.'
+        );
+        setSchoolStatus('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stateSchool, codeFromUrl]);
+
+  const handleRetry = async () => {
+    if (!codeFromUrl) return;
+
+    setSchoolError('');
+    setSchoolStatus('loading');
+
+    try {
+      const result = await getSchoolByCode(codeFromUrl);
+
+      if (!result) {
+        setSchoolError(
+          'No school matches that code. Check the code and try again.'
+        );
+        setSchoolStatus('error');
+        return;
+      }
+
+      setSchool(result);
+      setSchoolStatus('ready');
+    } catch (error) {
+      setSchoolError(
+        error?.response?.data?.message ||
+          'We could not load this school. Check your connection and try again.'
+      );
+      setSchoolStatus('error');
+    }
+  };
+
+  const schoolName = activeSchool?.schoolName || 'School';
+  const schoolCode = activeSchool?.schoolCode || '';
+  const levelLabel = formatSchoolLevel(activeSchool?.schoolLevel);
+  const ownershipLabel = formatOwnershipType(activeSchool?.ownershipType);
+  const supportEmail = activeSchool?.supportEmail || null;
+  const supportPhone = activeSchool?.supportPhone || null;
+
+  const loginPath = `/school-login${schoolCode ? `?code=${encodeURIComponent(schoolCode)}` : ''}`;
 
   const updateField = (field, value) => {
     setFormData((previous) => ({
@@ -136,7 +228,7 @@ export default function SchoolContactPage() {
     // Prepared payload for the future backend integration.
     // The actual API request will be added when the controller is ready.
     const inquiryPayload = {
-      schoolId,
+      schoolCode,
       fullName: formData.fullName.trim(),
       contact: formData.contact.trim(),
       subject: formData.subject.trim(),
@@ -161,7 +253,6 @@ export default function SchoolContactPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Page header */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <button
@@ -174,8 +265,8 @@ export default function SchoolContactPage() {
           </button>
 
           <Link
-            to="/school-login"
-            state={{ school }}
+            to={loginPath}
+            state={activeSchool ? { school: activeSchool } : undefined}
             className="inline-flex items-center gap-2 text-sm font-semibold text-[#071A52] transition hover:text-[#123A8F]"
           >
             School login
@@ -185,420 +276,539 @@ export default function SchoolContactPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-        {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl bg-[#071A52] px-6 py-8 text-white shadow-lg shadow-[#071A52]/10 sm:px-10 sm:py-10">
-          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full border-[36px] border-white/[0.05]" />
-          <div className="pointer-events-none absolute -bottom-28 right-24 h-56 w-56 rounded-full bg-[#123A8F]/60 blur-3xl" />
-
-          <div className="relative max-w-2xl">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-blue-100">
-              <MessageSquareText size={14} />
-              School inquiries
-            </div>
-
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-              Get in touch with your school.
-            </h1>
-
-            <p className="mt-4 max-w-xl text-sm leading-7 text-blue-100 sm:text-base">
-              Have a question about admission, school activities, or
-              something else? Send an inquiry directly to the school.
-              Its administration can review your message and contact
-              you personally.
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-blue-100 sm:text-sm">
-              <span className="inline-flex items-center gap-2">
-                <ShieldCheck size={16} />
-                Your contact details stay private from other visitors
-              </span>
+        {resolvedStatus === 'loading' && (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="animate-sn-fade-up w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+              <LoaderCircle
+                size={28}
+                className="mx-auto animate-spin text-[#123A8F]"
+              />
+              <p className="mt-4 text-sm font-semibold text-slate-700">
+                Loading your school
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Fetching the details for code {codeFromUrl || 'provided'}.
+              </p>
             </div>
           </div>
-        </section>
+        )}
 
-        {/* Main content */}
-        <div className="mt-8 grid items-start gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          {/* Selected school */}
-          <aside className="space-y-5">
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                You are contacting
+        {resolvedStatus === 'error' && (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="animate-sn-fade-up w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm sm:p-9">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                <SearchX size={26} />
+              </div>
+
+              <h1 className="mt-5 text-2xl font-black text-[#071A52]">
+                We couldn't load that school
+              </h1>
+
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                {schoolError}
               </p>
 
-              <div className="mt-5 flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt={`${schoolName} logo`}
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-xl font-black text-[#071A52]">
-                      {initials}
-                    </span>
-                  )}
-                </div>
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463]"
+                >
+                  Try again
+                </button>
 
-                <div className="min-w-0">
-                  <h2 className="break-words text-lg font-bold leading-6 text-[#071A52]">
-                    {schoolName}
-                  </h2>
-                  <p className="mt-1 break-words text-sm text-slate-500">
-                    {schoolCode}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123A8F]">
-                    <GraduationCap size={19} />
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      Contact the school directly
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      Your inquiry will be made available to the
-                      school's authorized administrators so they
-                      can follow up with you.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* What happens next */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-              <h3 className="font-bold text-[#071A52]">
-                What happens next?
-              </h3>
-
-              <div className="mt-5 space-y-5">
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
-                    1
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      Send your inquiry
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      Provide a clear subject and explain what you
-                      would like to know.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
-                    2
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      The school reviews it
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      An authorized administrator can view your
-                      message through ScholaNode.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
-                    3
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      The school contacts you
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      The school uses the email address or phone
-                      number you provide to follow up.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </aside>
-
-          {/* Inquiry form */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-5 py-5 sm:px-7">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#071A52] text-white">
-                  <MessageSquareText size={20} />
-                </div>
-
-                <div>
-                  <h2 className="text-xl font-bold text-[#071A52]">
-                    Send an inquiry
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Complete the details below to contact the school.
-                  </p>
-                </div>
+                <Link
+                  to="/"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-[#071A52] transition hover:bg-slate-50"
+                >
+                  Search for your school
+                  <ArrowRight size={16} />
+                </Link>
               </div>
             </div>
+          </div>
+        )}
 
-            <form
-              onSubmit={handleSubmit}
-              noValidate
-              className="space-y-5 p-5 sm:p-7"
-            >
-              {submissionState === 'not-connected' && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
-                >
-                  <MessageSquareText
-                    size={19}
-                    className="mt-0.5 shrink-0 text-amber-700"
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900">
-                      Inquiry submission is not available yet
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-amber-800">
-                      Your details have not been sent. This form needs
-                      to be connected to the ScholaNode backend first.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Full name */}
-              <div>
-                <label
-                  htmlFor="fullName"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
-                  Full name <span className="text-red-500">*</span>
-                </label>
-
-                <input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  autoComplete="name"
-                  maxLength={100}
-                  value={formData.fullName}
-                  onChange={(event) =>
-                    updateField('fullName', event.target.value)
-                  }
-                  placeholder="Enter your full name"
-                  aria-invalid={Boolean(errors.fullName)}
-                  aria-describedby={
-                    errors.fullName ? 'fullName-error' : undefined
-                  }
-                  className={inputClass('fullName')}
-                />
-
-                {errors.fullName && (
-                  <p
-                    id="fullName-error"
-                    className="mt-2 text-xs font-medium text-red-600"
-                  >
-                    {errors.fullName}
-                  </p>
-                )}
+        {resolvedStatus === 'missing' && (
+          <div className="animate-sn-fade-up mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
+            <div className="mb-8 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F]">
+                <MessageSquareText size={24} />
               </div>
 
-              {/* Contact */}
               <div>
-                <label
-                  htmlFor="contact"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
-                  Email address or phone number{' '}
-                  <span className="text-red-500">*</span>
-                </label>
-
-                <input
-                  id="contact"
-                  name="contact"
-                  type="text"
-                  autoComplete="email"
-                  maxLength={255}
-                  value={formData.contact}
-                  onChange={(event) =>
-                    updateField('contact', event.target.value)
-                  }
-                  placeholder="How can the school reach you?"
-                  aria-invalid={Boolean(errors.contact)}
-                  aria-describedby={
-                    errors.contact ? 'contact-error' : 'contact-hint'
-                  }
-                  className={inputClass('contact')}
-                />
-
-                {errors.contact ? (
-                  <p
-                    id="contact-error"
-                    className="mt-2 text-xs font-medium text-red-600"
-                  >
-                    {errors.contact}
-                  </p>
-                ) : (
-                  <p
-                    id="contact-hint"
-                    className="mt-2 text-xs leading-5 text-slate-500"
-                  >
-                    Provide an email address or phone number the
-                    school can use to contact you.
-                  </p>
-                )}
-              </div>
-
-              {/* Subject - required */}
-              <div>
-                <label
-                  htmlFor="subject"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
-                  Inquiry subject <span className="text-red-500">*</span>
-                </label>
-
-                <input
-                  id="subject"
-                  name="subject"
-                  type="text"
-                  maxLength={150}
-                  value={formData.subject}
-                  onChange={(event) =>
-                    updateField('subject', event.target.value)
-                  }
-                  placeholder="e.g. Admission enquiry, School fees"
-                  aria-invalid={Boolean(errors.subject)}
-                  aria-describedby={
-                    errors.subject ? 'subject-error' : 'subject-hint'
-                  }
-                  className={inputClass('subject')}
-                />
-
-                {errors.subject ? (
-                  <p
-                    id="subject-error"
-                    className="mt-2 text-xs font-medium text-red-600"
-                  >
-                    {errors.subject}
-                  </p>
-                ) : (
-                  <p
-                    id="subject-hint"
-                    className="mt-2 text-xs leading-5 text-slate-500"
-                  >
-                    Briefly describe the purpose of your inquiry.
-                  </p>
-                )}
-              </div>
-
-              {/* Message */}
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label
-                    htmlFor="message"
-                    className="text-sm font-semibold text-slate-700"
-                  >
-                    Your message{' '}
-                    <span className="text-red-500">*</span>
-                  </label>
-
-                  <span className="text-xs tabular-nums text-slate-400">
-                    {formData.message.length}/{MAX_MESSAGE_LENGTH}
-                  </span>
-                </div>
-
-                <textarea
-                  id="message"
-                  name="message"
-                  rows={6}
-                  maxLength={MAX_MESSAGE_LENGTH}
-                  value={formData.message}
-                  onChange={(event) =>
-                    updateField('message', event.target.value)
-                  }
-                  placeholder="Explain your question or inquiry here..."
-                  aria-invalid={Boolean(errors.message)}
-                  aria-describedby={
-                    errors.message ? 'message-error' : undefined
-                  }
-                  className={`${inputClass('message')} min-h-36 resize-y leading-6`}
-                />
-
-                {errors.message && (
-                  <p
-                    id="message-error"
-                    className="mt-2 text-xs font-medium text-red-600"
-                  >
-                    {errors.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Privacy notice */}
-              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <LockKeyhole
-                  size={17}
-                  className="mt-0.5 shrink-0 text-slate-500"
-                />
-                <p className="text-xs leading-5 text-slate-600">
-                  Your contact details are provided to help the school
-                  respond to your inquiry. They are not displayed as
-                  public school contact information.
+                <h1 className="text-2xl font-black text-[#071A52]">
+                  Choose your school first
+                </h1>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Find your school by code so your inquiry reaches the right
+                  administration.
                 </p>
               </div>
+            </div>
 
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={submissionState === 'submitting'}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0A2463] focus:outline-none focus:ring-4 focus:ring-[#071A52]/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submissionState === 'submitting' ? (
-                  <>
-                    <LoaderCircle size={17} className="animate-spin" />
-                    Sending inquiry...
-                  </>
-                ) : (
-                  <>
-                    <Send size={17} />
-                    Send inquiry
-                  </>
-                )}
-              </button>
-
-              <p className="text-center text-xs leading-5 text-slate-500">
-                You can also return to the school login page if you
-                already have an account.
-              </p>
-
-              <Link
-                to="/school-login"
-                state={{ school }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#071A52] transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                Go to school login
-                <ArrowRight size={16} />
-              </Link>
-            </form>
-          </section>
-        </div>
-
-        {/* Footer */}
-        <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">
-          <div className="flex items-center gap-2 text-sm font-bold text-[#071A52]">
-            <GraduationCap size={19} />
-            ScholaNode
+            <SchoolSearch />
           </div>
+        )}
 
-          <p className="text-xs leading-5 text-slate-500">
-            Helping schools and communities stay connected.
-          </p>
-        </footer>
+        {resolvedStatus === 'ready' && activeSchool && (
+          <>
+            {/* Hero */}
+            <section className="animate-sn-fade-up relative overflow-hidden rounded-3xl bg-[#071A52] px-6 py-8 text-white shadow-lg shadow-[#071A52]/10 sm:px-10 sm:py-10">
+              <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full border-[36px] border-white/[0.05]" />
+              <div className="pointer-events-none absolute -bottom-28 right-24 h-56 w-56 rounded-full bg-[#123A8F]/60 blur-3xl" />
+
+              <div className="relative max-w-2xl">
+                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-blue-100">
+                  <MessageSquareText size={14} />
+                  School inquiries
+                </div>
+
+                <h1 className="text-2xl font-black tracking-tight sm:text-4xl">
+                  Get in touch with {schoolName}.
+                </h1>
+
+                <p className="mt-4 max-w-xl text-sm leading-7 text-blue-100 sm:text-base">
+                  Have a question about admission, school activities, or
+                  something else? Send an inquiry directly to the school.
+                  Its administration can review your message and contact
+                  you personally.
+                </p>
+
+                <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-blue-100 sm:text-sm">
+                  <span className="inline-flex items-center gap-2">
+                    <ShieldCheck size={16} />
+                    Your contact details stay private from other visitors
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            {/* Main content */}
+            <div className="mt-8 grid items-start gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+              {/* Selected school */}
+              <aside className="space-y-5">
+                <section className="animate-sn-fade-up rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                    You are contacting
+                  </p>
+
+                  <div className="mt-5 flex items-center gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                      {activeSchool.logoUrl ? (
+                        <img
+                          src={activeSchool.logoUrl}
+                          alt={`${schoolName} logo`}
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-xl font-black text-[#071A52]">
+                          {getSchoolInitials(schoolName)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h2 className="break-words text-lg font-bold leading-6 text-[#071A52]">
+                        {schoolName}
+                      </h2>
+                      {schoolCode && (
+                        <p className="mt-1 break-words text-sm text-slate-500">
+                          Code: {schoolCode}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {(levelLabel || ownershipLabel) && (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {levelLabel && (
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#123A8F]">
+                          {levelLabel}
+                        </span>
+                      )}
+                      {ownershipLabel && (
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                          {ownershipLabel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123A8F]">
+                        <GraduationCap size={19} />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Contact the school directly
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Your inquiry will be made available to the
+                          school's authorized administrators so they
+                          can follow up with you.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(supportEmail || supportPhone) && (
+                    <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                      {supportEmail && (
+                        <a
+                          href={`mailto:${supportEmail}`}
+                          className="flex items-center gap-2 text-sm font-medium text-[#0EA5E9] hover:underline"
+                        >
+                          <Mail size={15} className="shrink-0" />
+                          <span className="break-all">{supportEmail}</span>
+                        </a>
+                      )}
+                      {supportPhone && (
+                        <a
+                          href={`tel:${supportPhone.replace(/[^\d+]/g, '')}`}
+                          className="flex items-center gap-2 text-sm font-medium text-[#0EA5E9] hover:underline"
+                        >
+                          <Phone size={15} className="shrink-0" />
+                          <span>{supportPhone}</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                {/* What happens next */}
+                <section className="animate-sn-fade-up rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                  <h3 className="font-bold text-[#071A52]">
+                    What happens next?
+                  </h3>
+
+                  <div className="mt-5 space-y-5">
+                    <div className="flex gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
+                        1
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Send your inquiry
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Provide a clear subject and explain what you
+                          would like to know.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
+                        2
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          The school reviews it
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          An authorized administrator can view your
+                          message through ScholaNode.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#123A8F]">
+                        3
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          The school contacts you
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          The school uses the email address or phone
+                          number you provide to follow up.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </aside>
+
+              {/* Inquiry form */}
+              <section className="animate-sn-fade-up overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-100 px-5 py-5 sm:px-7">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#071A52] text-white">
+                      <MessageSquareText size={20} />
+                    </div>
+
+                    <div>
+                      <h2 className="text-xl font-bold text-[#071A52]">
+                        Send an inquiry
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Complete the details below to contact the school.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={handleSubmit}
+                  noValidate
+                  className="space-y-5 p-5 sm:p-7"
+                >
+                  {submissionState === 'not-connected' && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                    >
+                      <MessageSquareText
+                        size={19}
+                        className="mt-0.5 shrink-0 text-amber-700"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">
+                          Inquiry submission is not available yet
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-amber-800">
+                          Your details have not been sent. This form needs
+                          to be connected to the ScholaNode backend first.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Full name */}
+                  <div>
+                    <label
+                      htmlFor="fullName"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Full name <span className="text-red-500">*</span>
+                    </label>
+
+                    <input
+                      id="fullName"
+                      name="fullName"
+                      type="text"
+                      autoComplete="name"
+                      maxLength={100}
+                      value={formData.fullName}
+                      onChange={(event) =>
+                        updateField('fullName', event.target.value)
+                      }
+                      placeholder="Enter your full name"
+                      aria-invalid={Boolean(errors.fullName)}
+                      aria-describedby={
+                        errors.fullName ? 'fullName-error' : undefined
+                      }
+                      className={inputClass('fullName')}
+                    />
+
+                    {errors.fullName && (
+                      <p
+                        id="fullName-error"
+                        className="mt-2 text-xs font-medium text-red-600"
+                      >
+                        {errors.fullName}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Contact */}
+                  <div>
+                    <label
+                      htmlFor="contact"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Email address or phone number{' '}
+                      <span className="text-red-500">*</span>
+                    </label>
+
+                    <input
+                      id="contact"
+                      name="contact"
+                      type="text"
+                      autoComplete="email"
+                      maxLength={255}
+                      value={formData.contact}
+                      onChange={(event) =>
+                        updateField('contact', event.target.value)
+                      }
+                      placeholder="How can the school reach you?"
+                      aria-invalid={Boolean(errors.contact)}
+                      aria-describedby={
+                        errors.contact ? 'contact-error' : 'contact-hint'
+                      }
+                      className={inputClass('contact')}
+                    />
+
+                    {errors.contact ? (
+                      <p
+                        id="contact-error"
+                        className="mt-2 text-xs font-medium text-red-600"
+                      >
+                        {errors.contact}
+                      </p>
+                    ) : (
+                      <p
+                        id="contact-hint"
+                        className="mt-2 text-xs leading-5 text-slate-500"
+                      >
+                        Provide an email address or phone number the
+                        school can use to contact you.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Subject - required */}
+                  <div>
+                    <label
+                      htmlFor="subject"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Inquiry subject <span className="text-red-500">*</span>
+                    </label>
+
+                    <input
+                      id="subject"
+                      name="subject"
+                      type="text"
+                      maxLength={150}
+                      value={formData.subject}
+                      onChange={(event) =>
+                        updateField('subject', event.target.value)
+                      }
+                      placeholder="e.g. Admission enquiry, School fees"
+                      aria-invalid={Boolean(errors.subject)}
+                      aria-describedby={
+                        errors.subject ? 'subject-error' : 'subject-hint'
+                      }
+                      className={inputClass('subject')}
+                    />
+
+                    {errors.subject ? (
+                      <p
+                        id="subject-error"
+                        className="mt-2 text-xs font-medium text-red-600"
+                      >
+                        {errors.subject}
+                      </p>
+                    ) : (
+                      <p
+                        id="subject-hint"
+                        className="mt-2 text-xs leading-5 text-slate-500"
+                      >
+                        Briefly describe the purpose of your inquiry.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label
+                        htmlFor="message"
+                        className="text-sm font-semibold text-slate-700"
+                      >
+                        Your message{' '}
+                        <span className="text-red-500">*</span>
+                      </label>
+
+                      <span className="text-xs tabular-nums text-slate-400">
+                        {formData.message.length}/{MAX_MESSAGE_LENGTH}
+                      </span>
+                    </div>
+
+                    <textarea
+                      id="message"
+                      name="message"
+                      rows={6}
+                      maxLength={MAX_MESSAGE_LENGTH}
+                      value={formData.message}
+                      onChange={(event) =>
+                        updateField('message', event.target.value)
+                      }
+                      placeholder="Explain your question or inquiry here..."
+                      aria-invalid={Boolean(errors.message)}
+                      aria-describedby={
+                        errors.message ? 'message-error' : undefined
+                      }
+                      className={`${inputClass('message')} min-h-36 resize-y leading-6`}
+                    />
+
+                    {errors.message && (
+                      <p
+                        id="message-error"
+                        className="mt-2 text-xs font-medium text-red-600"
+                      >
+                        {errors.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Privacy notice */}
+                  <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <LockKeyhole
+                      size={17}
+                      className="mt-0.5 shrink-0 text-slate-500"
+                    />
+                    <p className="text-xs leading-5 text-slate-600">
+                      Your contact details are provided to help the school
+                      respond to your inquiry. They are not displayed as
+                      public school contact information.
+                    </p>
+                  </div>
+
+                  {/* Submit */}
+                  <button
+                    type="submit"
+                    disabled={submissionState === 'submitting'}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0A2463] focus:outline-none focus:ring-4 focus:ring-[#071A52]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submissionState === 'submitting' ? (
+                      <>
+                        <LoaderCircle size={17} className="animate-spin" />
+                        Sending inquiry...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={17} />
+                        Send inquiry
+                      </>
+                    )}
+                  </button>
+
+                  <p className="text-center text-xs leading-5 text-slate-500">
+                    You can also return to the school login page if you
+                    already have an account.
+                  </p>
+
+                  <Link
+                    to={loginPath}
+                    state={{ school: activeSchool }}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#071A52] transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    Go to school login
+                    <ArrowRight size={16} />
+                  </Link>
+                </form>
+              </section>
+            </div>
+
+            {/* Footer */}
+            <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">
+              <div className="flex items-center gap-2 text-sm font-bold text-[#071A52]">
+                <GraduationCap size={19} />
+                ScholaNode
+              </div>
+
+              <p className="text-xs leading-5 text-slate-500">
+                Helping schools and communities stay connected.
+              </p>
+            </footer>
+          </>
+        )}
       </main>
     </div>
   );

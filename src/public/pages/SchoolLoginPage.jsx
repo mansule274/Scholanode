@@ -1,52 +1,221 @@
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
-  Mail,
-  Lock,
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
   Eye,
   EyeOff,
-  LogIn,
-  CheckCircle2,
-  Shield,
-  User,
+  GraduationCap,
   Headphones,
+  LoaderCircle,
+  Lock,
+  LogIn,
+  Mail,
   Phone,
-  MapPin,
-  Clock,
-  Send,
-  ExternalLink,
+  SearchX,
+  Shield,
+  ShieldCheck,
+  User,
 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import publicAxiosInstance from '../../auth/publicAxiosInstance';
 import { useUserContext } from '../../context/UserContext';
+import { getSchoolByCode } from '../schoolLookupApi';
+import { saveLastSchool } from '../lastSchool';
+import {
+  formatOwnershipType,
+  formatSchoolLevel,
+  getSchoolInitials,
+} from '../schoolDisplay';
+import SchoolSearch from '../components/SchoolSearch';
+
+const normalizeSchoolCode = (schoolCode) =>
+  String(schoolCode || '').trim().toUpperCase();
+
+const rememberKeyFor = (schoolCode) =>
+  `scholanode:login-id:${normalizeSchoolCode(schoolCode)}`;
+
+const rememberPrefKeyFor = (schoolCode) =>
+  `scholanode:login-id-remember:${normalizeSchoolCode(schoolCode)}`;
+
+function readRememberedLoginId(schoolCode) {
+  if (!schoolCode) return '';
+
+  try {
+    return window.localStorage.getItem(rememberKeyFor(schoolCode)) || '';
+  } catch {
+    return '';
+  }
+}
+
+// Remembering is on by default; only an explicit opt-out per school turns it off.
+function readRememberPreference(schoolCode) {
+  if (!schoolCode) return true;
+
+  try {
+    return window.localStorage.getItem(rememberPrefKeyFor(schoolCode)) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function writeRememberPreference(schoolCode, remember) {
+  if (!schoolCode) return;
+
+  try {
+    if (remember) {
+      window.localStorage.setItem(rememberPrefKeyFor(schoolCode), 'on');
+    } else {
+      window.localStorage.setItem(rememberPrefKeyFor(schoolCode), 'off');
+    }
+  } catch {
+    // Storage can be unavailable in private browsing; remembering is optional.
+  }
+}
+
+function writeRememberedLoginId(schoolCode, loginId, remember) {
+  if (!schoolCode) return;
+
+  try {
+    if (remember && loginId) {
+      window.localStorage.setItem(rememberKeyFor(schoolCode), loginId);
+    } else {
+      window.localStorage.removeItem(rememberKeyFor(schoolCode));
+    }
+  } catch {
+    // Storage can be unavailable in private browsing; remembering is optional.
+  }
+}
+
+const normalizeWebsite = (value) => {
+  if (!value) return null;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+};
 
 export default function SchoolLoginPage({ onBack }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { login } = useUserContext();
-  const school = location.state?.school || {};
-  const schoolName = school.name || school.schoolName || 'School';
-  const schoolCode = school.code || school.schoolCode || 'school-code';
-  const schoolLogo = school.logoUrl || school.logo_url || null;
-  const contactEmail = school.contactEmail || school.email || school.schoolEmail || 'support@school.edu.ng';
-  const [loginId, setLoginId] = useState('');
+
+  const candidateSchool = location.state?.school;
+  const stateSchool =
+    candidateSchool && (candidateSchool.schoolCode || candidateSchool.schoolName)
+      ? candidateSchool
+      : null;
+  const codeFromUrl = (searchParams.get('code') || '').trim();
+
+  const [school, setSchool] = useState(stateSchool);
+  const [schoolStatus, setSchoolStatus] = useState(
+    stateSchool ? 'ready' : codeFromUrl ? 'loading' : 'missing'
+  );
+  const [schoolError, setSchoolError] = useState('');
+
+  const [loginId, setLoginId] = useState(() =>
+    readRememberedLoginId(stateSchool?.schoolCode || codeFromUrl)
+  );
+  const [rememberLoginId, setRememberLoginId] = useState(() =>
+    readRememberPreference(stateSchool?.schoolCode || codeFromUrl)
+  );
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberLoginId, setRememberLoginId] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  const initials = schoolName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join('') || 'S';
+  const activeSchool = school || stateSchool;
+  const resolvedStatus = activeSchool
+    ? 'ready'
+    : schoolStatus === 'error'
+      ? 'error'
+      : codeFromUrl
+        ? 'loading'
+        : 'missing';
+
+  useEffect(() => {
+    if (stateSchool || !codeFromUrl) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await getSchoolByCode(codeFromUrl);
+
+        if (cancelled) return;
+
+        if (!result) {
+          setSchoolError(
+            'No school matches that code. Check the code and try again.'
+          );
+          setSchoolStatus('error');
+          return;
+        }
+
+        setSchool(result);
+        setSchoolError('');
+        setSchoolStatus('ready');
+
+        setLoginId(readRememberedLoginId(result.schoolCode));
+        setRememberLoginId(readRememberPreference(result.schoolCode));
+      } catch (error) {
+        if (cancelled) return;
+
+        setSchoolError(
+          error?.response?.data?.message ||
+            'We could not load this school. Check your connection and try again.'
+        );
+        setSchoolStatus('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stateSchool, codeFromUrl]);
+
+  const handleRetry = async () => {
+    if (!codeFromUrl) return;
+
+    setSchoolError('');
+    setSchoolStatus('loading');
+
+    try {
+      const result = await getSchoolByCode(codeFromUrl);
+
+      if (!result) {
+        setSchoolError(
+          'No school matches that code. Check the code and try again.'
+        );
+        setSchoolStatus('error');
+        return;
+      }
+
+      setSchool(result);
+
+      setLoginId(readRememberedLoginId(result.schoolCode));
+      setRememberLoginId(readRememberPreference(result.schoolCode));
+
+      setSchoolStatus('ready');
+    } catch (error) {
+      setSchoolError(
+        error?.response?.data?.message ||
+          'We could not load this school. Check your connection and try again.'
+      );
+      setSchoolStatus('error');
+    }
+  };
 
   const handleLogin = async (event) => {
     event.preventDefault();
 
+    const schoolCode = activeSchool?.schoolCode;
     const trimmedLoginId = loginId.trim();
+
+    if (!schoolCode) {
+      setLoginError('Choose your school before signing in.');
+      return;
+    }
+
     if (!trimmedLoginId || !password.trim()) {
       setLoginError('Please enter your login ID and password.');
       return;
@@ -62,367 +231,502 @@ export default function SchoolLoginPage({ onBack }) {
         password,
       };
 
-      console.log('Login request payload:', payload);
+      console.log('Login attempt:', { schoolCode, loginId: trimmedLoginId });
+
       const response = await publicAxiosInstance.post('/auths/login', payload);
-      console.log('Login success response:', response.data);
-
       const token = response.data?.accessToken;
-      const responseUser = response.data?.user || null;
-      const authPayload = responseUser ? response.data : { user: null, school: response.data?.school || school };
 
-      if (token) {
-        login(token, authPayload);
-      } else {
-        localStorage.setItem('accessToken', '');
+      if (!token) {
+        setLoginError(
+          'We could not complete the sign-in. Please try again or contact your school administrator.'
+        );
+        return;
       }
 
-      navigate('/dashboard', { state: { school, user: authPayload.user } });
+      const responseUser = response.data?.user || null;
+      const authPayload = responseUser
+        ? response.data
+        : { user: null, school: response.data?.school || activeSchool };
+
+      writeRememberPreference(schoolCode, rememberLoginId);
+      writeRememberedLoginId(schoolCode, trimmedLoginId, rememberLoginId);
+      saveLastSchool(activeSchool);
+      login(token, authPayload);
+      navigate('/dashboard', { state: { school: activeSchool, user: authPayload.user } });
     } catch (error) {
       console.error('Login request failed:', {
-        payload: {
-          schoolCode,
-          loginId: trimmedLoginId,
-          password,
-        },
-        error: error?.response?.data || error,
+        schoolCode,
+        status: error?.response?.status,
+        message: error?.response?.data?.message || error?.message,
       });
-      setLoginError(error?.response?.data?.message || 'Login failed. Please check your details and try again.');
+
+      setLoginError(
+        error?.response?.data?.message ||
+          'Login failed. Please check your details and try again.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRememberChange = (event) => {
+    const next = event.target.checked;
+    setRememberLoginId(next);
+
+    if (!activeSchool?.schoolCode) return;
+
+    writeRememberPreference(activeSchool.schoolCode, next);
+    if (!next) writeRememberedLoginId(activeSchool.schoolCode, '', false);
+  };
+
+  const schoolName = activeSchool?.schoolName || 'School';
+  const schoolCode = activeSchool?.schoolCode || '';
+  const levelLabel = formatSchoolLevel(activeSchool?.schoolLevel);
+  const ownershipLabel = formatOwnershipType(activeSchool?.ownershipType);
+  const website = normalizeWebsite(activeSchool?.website);
+  const supportEmail = activeSchool?.supportEmail || null;
+  const supportPhone = activeSchool?.supportPhone || null;
+  const hasSupportInfo = Boolean(supportEmail || supportPhone);
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Top spacing under navbar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Back link */}
-        <button
-          type="button"
-          onClick={() => (onBack ? onBack() : navigate(-1))}
-          className="inline-flex items-center gap-2 text-[#071A52] font-medium hover:underline mb-6 cursor-pointer"
-        >
-          <ArrowLeft size={18} />
-          Back to all schools
-        </button>
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={() => (onBack ? onBack() : navigate('/'))}
+            className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-[#071A52]"
+          >
+            <ArrowLeft size={17} />
+            Back to school search
+          </button>
 
-        {/* Main grid */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* LEFT - Login Card */}
-          <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
-            {/* School branding */}
-            <div className="text-center space-y-4">
-              <div className="w-28 h-28 mx-auto rounded-3xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
-                {schoolLogo ? (
-                  <img src={schoolLogo} alt={schoolName} className="w-20 h-20 object-contain" />
-                ) : (
-                  <span className="text-3xl font-bold text-[#071A52]">{initials}</span>
-                )}
-              </div>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-sm font-bold text-[#071A52] transition hover:text-[#123A8F]"
+          >
+            <GraduationCap size={22} />
+            ScholaNode
+          </Link>
+        </div>
+      </header>
 
-              <div>
-                <h1 className="text-3xl font-extrabold text-[#071A52]">
-                  {schoolName}
-                </h1>
-                <p className="text-slate-500 mt-1">{schoolCode}</p>
-              </div>
-
-              <p className="text-emerald-600 font-semibold text-lg">
-                Excellence Through Knowledge
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+        {resolvedStatus === 'loading' && (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="animate-sn-fade-up w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+              <LoaderCircle
+                size={28}
+                className="mx-auto animate-spin text-[#123A8F]"
+              />
+              <p className="mt-4 text-sm font-semibold text-slate-700">
+                Loading your school
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Fetching the details for code {codeFromUrl || 'provided'}.
               </p>
             </div>
+          </div>
+        )}
 
-            <div className="my-8 flex items-center gap-4">
-              <div className="flex-1 h-px bg-slate-200" />
-              <Shield className="text-slate-400" size={18} />
-              <div className="flex-1 h-px bg-slate-200" />
+        {resolvedStatus === 'error' && (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="animate-sn-fade-up w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm sm:p-9">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                <SearchX size={26} />
+              </div>
+
+              <h1 className="mt-5 text-2xl font-black text-[#071A52]">
+                We couldn't load that school
+              </h1>
+
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                {schoolError}
+              </p>
+
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463]"
+                >
+                  Try again
+                </button>
+
+                <Link
+                  to="/"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-[#071A52] transition hover:bg-slate-50"
+                >
+                  Search for your school
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
             </div>
+          </div>
+        )}
 
-            {/* Welcome box */}
-            <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-[#071A52] text-white flex items-center justify-center">
-                <User size={22} />
+        {resolvedStatus === 'missing' && (
+          <div className="animate-sn-fade-up mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
+            <div className="mb-8 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F]">
+                <GraduationCap size={24} />
               </div>
 
               <div>
-                <h2 className="font-bold text-slate-900 text-lg">Welcome back!</h2>
-                <p className="text-slate-600">
-                  Sign in to access your school's portal.
+                <h1 className="text-2xl font-black text-[#071A52]">
+                  Choose your school first
+                </h1>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  School logins are scoped to a single school. Find yours by
+                  code to continue.
                 </p>
               </div>
             </div>
 
-            {/* Login form */}
-            <form className="space-y-5" onSubmit={handleLogin}>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">
-                  Login ID
-                </label>
+            <SchoolSearch />
+          </div>
+        )}
 
-                <div className="relative">
-                  <Mail
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                    size={20}
-                  />
+        {resolvedStatus === 'ready' && activeSchool && (
+          <>
+            <div className="grid items-start gap-6 lg:grid-cols-3">
+              <section className="animate-sn-fade-up rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:col-span-2">
+                <div className="text-center">
+                  <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
+                    {activeSchool.logoUrl ? (
+                      <img
+                        src={activeSchool.logoUrl}
+                        alt={`${schoolName} logo`}
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-2xl font-black text-[#071A52]">
+                        {getSchoolInitials(schoolName)}
+                      </span>
+                    )}
+                  </div>
 
-                  <input
-                    type="text"
-                    value={loginId}
-                    onChange={(event) => setLoginId(event.target.value)}
-                    placeholder="Enter your login ID"
-                    className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-[#071A52]/10 focus:border-[#071A52] transition-all"
-                  />
+                  <h1 className="mt-5 break-words text-2xl font-black tracking-tight text-[#071A52] sm:text-3xl">
+                    {schoolName}
+                  </h1>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    {schoolCode && (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        Code: {schoolCode}
+                      </span>
+                    )}
+                    {levelLabel && (
+                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#123A8F]">
+                        {levelLabel}
+                      </span>
+                    )}
+                    {ownershipLabel && (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {ownershipLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">
-                  Password
-                </label>
+                <div className="my-8 flex items-center gap-4">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <Shield size={18} className="text-slate-400" />
+                  <div className="h-px flex-1 bg-slate-200" />
+                </div>
 
-                <div className="relative">
-                  <Lock
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                    size={20}
-                  />
+                <div className="mb-6 flex items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#071A52] text-white">
+                    <User size={22} />
+                  </div>
 
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Enter your password"
-                    className="w-full pl-12 pr-20 py-4 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-[#071A52]/10 focus:border-[#071A52] transition-all"
-                  />
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Sign in to your portal
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      Use the login ID and password issued by {schoolName}.
+                    </p>
+                  </div>
+                </div>
+
+                <form className="space-y-5" onSubmit={handleLogin} noValidate>
+                  <div>
+                    <label
+                      htmlFor="login-id"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Login ID
+                    </label>
+
+                    <div className="relative">
+                      <Mail
+                        size={19}
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+
+                      <input
+                        id="login-id"
+                        name="loginId"
+                        type="text"
+                        autoComplete="username"
+                        value={loginId}
+                        onChange={(event) => {
+                          setLoginId(event.target.value);
+                          setLoginError('');
+                        }}
+                        placeholder="Enter your login ID"
+                        className="w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-12 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#071A52] focus:ring-4 focus:ring-[#071A52]/10"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="password"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Password
+                    </label>
+
+                    <div className="relative">
+                      <Lock
+                        size={19}
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(event) => {
+                          setPassword(event.target.value);
+                          setLoginError('');
+                        }}
+                        placeholder="Enter your password"
+                        className="w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-12 pr-24 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#071A52] focus:ring-4 focus:ring-[#071A52]/10"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((current) => !current)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-[#071A52] transition hover:bg-slate-100"
+                      >
+                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        {showPassword ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {loginError && (
+                    <div
+                      role="alert"
+                      aria-live="polite"
+                      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700"
+                    >
+                      {loginError}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <label className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={rememberLoginId}
+                          onChange={handleRememberChange}
+                          className="h-4 w-4 accent-[#071A52]"
+                        />
+                        Remember my login ID
+                      </label>
+
+                      <p className="mt-1 pl-6 text-xs leading-5 text-slate-500">
+                        Saved only for {schoolCode} on this device.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-start gap-1 text-sm sm:items-end">
+                      <Link
+                        to="/forgot-password"
+                        className="font-semibold text-[#071A52] hover:underline"
+                      >
+                        Forgot password?
+                      </Link>
+                      <Link
+                        to="/forgot-login-id"
+                        className="font-semibold text-[#071A52] hover:underline"
+                      >
+                        Forgot login ID?
+                      </Link>
+                    </div>
+                  </div>
 
                   <button
-                    type="button"
-                    onClick={() => setShowPassword((currentValue) => !currentValue)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-[#071A52] hover:underline flex items-center gap-1 cursor-pointer"
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-[#071A52]/20 transition hover:bg-[#0A2463] focus:outline-none focus:ring-4 focus:ring-[#071A52]/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    {showPassword ? 'Hide' : 'Show'}
+                    {loading ? (
+                      <>
+                        <LoaderCircle size={18} className="animate-spin" />
+                        Signing in...
+                      </>
+                    ) : (
+                      <>
+                        <LogIn size={18} />
+                        Sign in
+                      </>
+                    )}
                   </button>
-                </div>
-              </div>
+                </form>
 
-              {loginError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {loginError}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <label className="flex items-center gap-2 text-sm text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={rememberLoginId}
-                    onChange={(event) => setRememberLoginId(event.target.checked)}
-                    className="accent-[#071A52]"
-                  />
-                  Remember my login ID
-                </label>
-
-                <div className="flex flex-col items-start gap-1 text-sm sm:items-end">
-                  <Link to="/forgot-password" className="font-medium text-[#071A52] hover:underline cursor-pointer">
-                    Forgot password?
-                  </Link>
-                  <Link to="/forgot-login-id" className="font-medium text-[#071A52] hover:underline cursor-pointer">
-                    Forgot login ID?
-                  </Link>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full inline-flex items-center justify-center gap-2 py-4 rounded-2xl bg-[#071A52] text-white font-semibold hover:bg-[#0A2463] shadow-lg shadow-[#071A52]/20 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <LogIn size={20} />
-                {loading ? 'Logging in...' : 'Log in'}
-              </button>
-            </form>
-
-            {/* Help section */}
-            <div className="mt-8 pt-6 border-t border-slate-200 text-center space-y-2">
-              <p className="font-semibold text-slate-800">Need help?</p>
-              <p className="text-slate-500 max-w-md mx-auto">
-                If you're having trouble accessing your account, please contact
-                your school administrator.
-              </p>
-              <a
-                href={`mailto:${contactEmail}?subject=${encodeURIComponent('School Login Support')}`}
-                className="inline-block text-sm font-medium text-[#071A52] hover:underline"
-              >
-                Contact school
-              </a>
-            </div>
-          </div>
-
-          {/* RIGHT - Info Cards */}
-          <div className="space-y-6">
-            {/* Login Instructions */}
-            <InfoCard
-              color="blue"
-              icon={Shield}
-              title="Login Instructions"
-              items={[
-                "Students: Use your admission number to log in.",
-                "Teachers & Staff: Use the system-generated Staff Login ID provided by your school.",
-                "Contact the school administrator if you cannot access your account.",
-              ]}
-            />
-
-            {/* Registration Guidelines */}
-            <InfoCard
-              color="green"
-              icon={CheckCircle2}
-              title="Registration Guidelines"
-              items={[
-                "Student, teacher, and parent accounts are created by the school administrator.",
-                "Self-registration is not available.",
-                "If you don't have an account, please contact your school.",
-                "If you've forgotten your password or login ID, use the recovery options. If you're still unable to recover your details, contact your school administrator.",
-              ]}
-            />
-
-            {/* Help Card */}
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
-                  <Headphones size={22} />
-                </div>
-                <h3 className="font-bold text-lg text-slate-900">
-                  Need More Help?
-                </h3>
-              </div>
-
-              <p className="text-slate-600">
-                Our support team is here to help you.
-              </p>
-
-              <div className="space-y-4 text-sm">
-                <ContactRow icon={Mail} text={contactEmail} />
-                <ContactRow icon={Phone} text="+234 703 123 4567" />
-                <ContactRow
-                  icon={MapPin}
-                  text="P.M.B 7156, Dutse, Jigawa State, Nigeria"
-                />
-                <ContactRow icon={Clock} text="Mon – Fri: 8:00 AM – 4:00 PM" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* About School */}
-        <div className="mt-8 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 lg:p-8">
-          <div className="grid lg:grid-cols-3 gap-8 items-center">
-            <div className="flex justify-center lg:justify-start">
-              <div className="w-56 h-40 rounded-3xl bg-slate-50 border border-slate-200 flex items-center justify-center">
-                <img
-                  src="/school-building.png"
-                  alt="School Building"
-                  className="w-44 h-28 object-contain"
-                />
-              </div>
-            </div>
-
-            <div className="lg:col-span-2 space-y-4">
-              <h3 className="text-2xl font-bold text-[#071A52]">
-                About FUD International School
-              </h3>
-
-              <p className="text-slate-600 leading-relaxed">
-                FUD International School is committed to providing quality
-                education that empowers students to become leaders and innovators
-                of tomorrow. We nurture excellence, discipline, and values in a
-                safe and supportive learning environment.
-              </p>
-
-              <a
-                href="#"
-                className="inline-flex items-center gap-2 text-[#071A52] font-semibold hover:underline cursor-pointer"
-              >
-                Visit our website
-                <ExternalLink size={18} />
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <footer className="mt-8 bg-[#071A52] text-white rounded-3xl overflow-hidden">
-          <div className="grid lg:grid-cols-5 gap-8 p-8">
-            {/* Brand */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center">
-                  <Shield size={22} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xl">ScholarNode</h4>
-                  <p className="text-white/70 text-sm">
-                    School Management System
+                <div className="mt-8 space-y-2 border-t border-slate-200 pt-6 text-center">
+                  <p className="font-semibold text-slate-800">Need help signing in?</p>
+                  <p className="mx-auto max-w-md text-sm leading-6 text-slate-500">
+                    If you're having trouble accessing your account, please
+                    contact your school administrator.
                   </p>
+
+                  <Link
+                    to={`/school-contact${schoolCode ? `?code=${encodeURIComponent(schoolCode)}` : ''}`}
+                    state={{ school: activeSchool }}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0EA5E9] hover:underline"
+                  >
+                    Contact {schoolName}
+                    <ArrowRight size={15} />
+                  </Link>
                 </div>
-              </div>
+              </section>
 
-              <p className="text-white/80 max-w-md leading-relaxed">
-                Empowering schools to manage students, teachers, classes, and
-                more in one secure cloud platform.
-              </p>
-            </div>
-
-            {/* Links */}
-            <FooterLinks
-              title="Product"
-              links={['Features', 'Pricing', 'Security', 'Updates', 'Mobile App']}
-            />
-
-            <FooterLinks
-              title="Company"
-              links={['About Us', 'Careers', 'Blog', 'Contact Us', 'Privacy Policy']}
-            />
-
-            {/* Newsletter */}
-            <div className="space-y-4">
-              <h5 className="font-semibold text-lg">Newsletter</h5>
-              <p className="text-white/70 text-sm">
-                Get the latest updates and tips delivered to your inbox.
-              </p>
-
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/10 placeholder:text-white/40 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
+              <aside className="animate-sn-fade-up space-y-6">
+                <InfoCard
+                  color="blue"
+                  icon={Shield}
+                  title="Login instructions"
+                  items={[
+                    'Students sign in with the admission number issued by their school.',
+                    'Teachers and staff use the staff login ID provided by the school.',
+                    'Parents use the login details given to them by the school.',
+                    'Contact your school administrator if you cannot access your account.',
+                  ]}
                 />
 
-                <button className="px-4 rounded-xl bg-cyan-400 text-[#071A52] hover:bg-cyan-300 transition-colors cursor-pointer">
-                  <Send size={18} />
-                </button>
+                <InfoCard
+                  color="green"
+                  icon={CheckCircle2}
+                  title="Account guidelines"
+                  items={[
+                    'Student, teacher, and parent accounts are created by the school administrator.',
+                    'Self-registration is not available.',
+                    'Use the recovery links if you have forgotten your password or login ID.',
+                  ]}
+                />
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-50 text-purple-700">
+                      <Headphones size={21} />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      School support
+                    </h3>
+                  </div>
+
+                  {hasSupportInfo ? (
+                    <div className="mt-4 space-y-3">
+                      {supportEmail && (
+                        <a
+                          href={`mailto:${supportEmail}`}
+                          className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                        >
+                          <Mail size={16} className="shrink-0 text-[#071A52]" />
+                          <span className="break-all">{supportEmail}</span>
+                        </a>
+                      )}
+
+                      {supportPhone && (
+                        <a
+                          href={`tel:${supportPhone.replace(/[^\d+]/g, '')}`}
+                          className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                        >
+                          <Phone size={16} className="shrink-0 text-[#071A52]" />
+                          <span>{supportPhone}</span>
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-sm leading-6 text-slate-500">
+                      This school has not published support contacts yet.
+                      Contact your school administrator directly for help with
+                      your account.
+                    </p>
+                  )}
+
+                  {website && (
+                    <a
+                      href={website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0EA5E9] hover:underline"
+                    >
+                      Visit school website
+                      <ExternalLink size={15} />
+                    </a>
+                  )}
+                </section>
+              </aside>
+            </div>
+
+            {(activeSchool.welcomeMessage || website) && (
+              <section className="animate-sn-fade-up mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0EA5E9]">
+                  About the school
+                </p>
+
+                <h2 className="mt-2 text-2xl font-black text-[#071A52]">
+                  {schoolName}
+                </h2>
+
+                {activeSchool.welcomeMessage && (
+                  <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
+                    {activeSchool.welcomeMessage}
+                  </p>
+                )}
+
+                {website && (
+                  <a
+                    href={website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#071A52] hover:underline"
+                  >
+                    Visit the official school website
+                    <ExternalLink size={16} />
+                  </a>
+                )}
+              </section>
+            )}
+
+            <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">
+              <div className="flex items-center gap-2 text-sm font-bold text-[#071A52]">
+                <GraduationCap size={19} />
+                ScholaNode
               </div>
-            </div>
-          </div>
 
-          <div className="border-t border-white/10 px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-white/70">
-            <p>© 2026 ScholarNode. All rights reserved.</p>
-
-            <div className="flex items-center gap-6">
-              <a href="#" className="hover:text-white cursor-pointer">
-                Terms of Service
-              </a>
-              <a href="#" className="hover:text-white cursor-pointer">
-                Privacy Policy
-              </a>
-            </div>
-          </div>
-        </footer>
-      </div>
+              <p className="inline-flex items-center gap-2 text-xs leading-5 text-slate-500">
+                <ShieldCheck size={14} />
+                Secure access for students, parents, and school staff.
+              </p>
+            </footer>
+          </>
+        )}
+      </main>
     </div>
   );
 }
-
-/* -------------------- Reusable Components -------------------- */
 
 function InfoCard({ icon: Icon, title, items, color = 'blue' }) {
   const styles = {
@@ -440,51 +744,25 @@ function InfoCard({ icon: Icon, title, items, color = 'blue' }) {
     },
   };
 
-  const s = styles[color];
+  const tone = styles[color];
 
   return (
-    <div className={`rounded-3xl border border-slate-200 shadow-sm p-6 ${s.bg}`}>
-      <div className="flex items-center gap-3 mb-5">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${s.icon}`}>
-          <Icon size={22} />
+    <section className={`rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6 ${tone.bg}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}>
+          <Icon size={21} />
         </div>
-        <h3 className={`font-bold text-lg ${s.text}`}>{title}</h3>
+        <h3 className={`text-base font-bold ${tone.text}`}>{title}</h3>
       </div>
 
-      <ul className="space-y-4">
+      <ul className="space-y-3.5">
         {items.map((item) => (
-          <li key={item} className="flex items-start gap-3 text-slate-700">
-            <CheckCircle2 className={`mt-0.5 shrink-0 ${s.bullet}`} size={20} />
-            <span className="leading-relaxed text-[15px]">{item}</span>
+          <li key={item} className="flex items-start gap-3 text-sm text-slate-700">
+            <CheckCircle2 className={`mt-0.5 shrink-0 ${tone.bullet}`} size={18} />
+            <span className="leading-6">{item}</span>
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function ContactRow({ icon: Icon, text }) {
-  return (
-    <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
-      <Icon className="text-[#071A52] mt-0.5" size={18} />
-      <span className="text-slate-700 leading-relaxed">{text}</span>
-    </div>
-  );
-}
-
-function FooterLinks({ title, links }) {
-  return (
-    <div className="space-y-4">
-      <h5 className="font-semibold text-lg">{title}</h5>
-      <ul className="space-y-3 text-white/70 text-sm">
-        {links.map((link) => (
-          <li key={link}>
-            <a href="#" className="hover:text-white transition-colors cursor-pointer">
-              {link}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </section>
   );
 }
