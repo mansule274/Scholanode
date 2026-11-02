@@ -103,6 +103,12 @@ const navigation = [
         path: '/complaints',
         allowedRoles: [ROLES.STAFF, ROLES.EXAM_OFFICER, ROLES.PARENT, ROLES.ADMINISTRATOR],
       },
+      {
+        label: 'School Inquiries',
+        icon: MessageSquareText,
+        path: '/school-inquiries',
+        allowedRoles: administratorRoles,
+      },
     ],
   },
   {

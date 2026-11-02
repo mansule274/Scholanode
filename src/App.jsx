@@ -147,6 +147,7 @@ function PrivateRoutes() {
       {/* School communication */}
       <Route path="/announcements" element={<PrivateAppShell pageTitle="Announcements"><AnnouncementsPage /></PrivateAppShell>} />
       <Route path="/complaints" element={<PrivateAppShell pageTitle="Complaints"><ComplaintsPage /></PrivateAppShell>} />
+      <Route path="/school-contact" element={<SchoolContactPage />} />
 
       {/* Student */}
       <Route path="/student-subjects" element={<PrivateAppShell pageTitle="My Subjects"><PlaceholderPage title="My Subjects" description="Subjects offered by the student's class will appear here." /></PrivateAppShell>} />

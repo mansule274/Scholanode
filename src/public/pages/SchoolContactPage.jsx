@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
   GraduationCap,
   LoaderCircle,
   LockKeyhole,
@@ -19,6 +21,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import { getSchoolByCode } from '../schoolLookupApi';
+import { submitSchoolInquiry } from '../schoolInquiryApi';
 import {
   formatOwnershipType,
   formatSchoolLevel,
@@ -55,6 +58,8 @@ export default function SchoolContactPage() {
 
   const [errors, setErrors] = useState({});
   const [submissionState, setSubmissionState] = useState('idle');
+  const [submissionError, setSubmissionError] = useState('');
+  const [submittedSubject, setSubmittedSubject] = useState('');
 
   const activeSchool = school || stateSchool;
   const resolvedStatus = activeSchool
@@ -151,8 +156,9 @@ export default function SchoolContactPage() {
       [field]: '',
     }));
 
-    if (submissionState !== 'idle') {
+    if (submissionState === 'error') {
       setSubmissionState('idle');
+      setSubmissionError('');
     }
   };
 
@@ -218,16 +224,24 @@ export default function SchoolContactPage() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (submissionState === 'submitting') return;
 
     if (!validateForm()) {
       return;
     }
 
-    // Prepared payload for the future backend integration.
-    // The actual API request will be added when the controller is ready.
-    const inquiryPayload = {
+    if (!schoolCode) {
+      setSubmissionError(
+        'This school could not be identified. Reload the page and try again.'
+      );
+      setSubmissionState('error');
+      return;
+    }
+
+    const payload = {
       schoolCode,
       fullName: formData.fullName.trim(),
       contact: formData.contact.trim(),
@@ -235,10 +249,34 @@ export default function SchoolContactPage() {
       message: formData.message.trim(),
     };
 
-    // Prevent an unused-variable warning while the API is not connected.
-    void inquiryPayload;
+    setSubmissionState('submitting');
+    setSubmissionError('');
 
-    setSubmissionState('not-connected');
+    try {
+      await submitSchoolInquiry(payload);
+
+      setSubmittedSubject(payload.subject);
+      setSubmissionState('success');
+      setFormData({
+        fullName: '',
+        contact: '',
+        subject: '',
+        message: '',
+      });
+      setErrors({});
+    } catch (error) {
+      setSubmissionError(
+        error?.response?.data?.message ||
+          'We could not send your inquiry. Check your connection and try again.'
+      );
+      setSubmissionState('error');
+    }
+  };
+
+  const handleSendAnother = () => {
+    setSubmissionState('idle');
+    setSubmissionError('');
+    setSubmittedSubject('');
   };
 
   const inputClass = (field) =>
@@ -552,27 +590,65 @@ export default function SchoolContactPage() {
                   </div>
                 </div>
 
+                {submissionState === 'success' ? (
+                  <div className="space-y-5 p-5 sm:p-7">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                        <CheckCircle2 size={28} />
+                      </div>
+
+                      <h3 className="mt-4 text-lg font-bold text-emerald-900">
+                        Inquiry sent
+                      </h3>
+
+                      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-emerald-800">
+                        {submittedSubject
+                          ? `“${submittedSubject}” was sent to ${schoolName}. `
+                          : `Your inquiry was sent to ${schoolName}. `}
+                        The school will contact you using the details you
+                        provided.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleSendAnother}
+                        className="mt-5 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A2463] focus:outline-none focus:ring-4 focus:ring-[#071A52]/15"
+                      >
+                        <Send size={16} />
+                        Send another inquiry
+                      </button>
+                    </div>
+
+                    <Link
+                      to={loginPath}
+                      state={{ school: activeSchool }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-[#071A52] transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      Go to school login
+                      <ArrowRight size={16} />
+                    </Link>
+                  </div>
+                ) : (
                 <form
                   onSubmit={handleSubmit}
                   noValidate
                   className="space-y-5 p-5 sm:p-7"
                 >
-                  {submissionState === 'not-connected' && (
+                  {submissionState === 'error' && (
                     <div
                       role="alert"
-                      className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                      className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4"
                     >
-                      <MessageSquareText
+                      <AlertCircle
                         size={19}
-                        className="mt-0.5 shrink-0 text-amber-700"
+                        className="mt-0.5 shrink-0 text-rose-600"
                       />
                       <div>
-                        <p className="text-sm font-semibold text-amber-900">
-                          Inquiry submission is not available yet
+                        <p className="text-sm font-semibold text-rose-900">
+                          We couldn&apos;t send your inquiry
                         </p>
-                        <p className="mt-1 text-sm leading-6 text-amber-800">
-                          Your details have not been sent. This form needs
-                          to be connected to the ScholaNode backend first.
+                        <p className="mt-1 text-sm leading-6 text-rose-700">
+                          {submissionError}
                         </p>
                       </div>
                     </div>
@@ -793,6 +869,7 @@ export default function SchoolContactPage() {
                     <ArrowRight size={16} />
                   </Link>
                 </form>
+                )}
               </section>
             </div>
           </>
