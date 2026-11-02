@@ -1,16 +1,19 @@
 import {
   ArrowRight,
+  ArrowUpRight,
   BookOpen,
   Building2,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   GraduationCap,
+  LifeBuoy,
   Settings2,
   Users,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useUserContext } from '../../../context/UserContext';
+import { canAccessSchoolSupport } from '../../../utils/roles';
 import OwnerSetupPanel from './OwnerSetupPanel';
 
 const quickLinks = [
@@ -34,6 +37,7 @@ function getGreeting() {
 export default function AdministrativeDashboard() {
   const { user, school } = useUserContext();
   const isOwner = Boolean(user?.isOwner);
+  const canContactSupport = canAccessSchoolSupport(user);
   const greetingName = user?.firstName || 'Admin';
   const schoolName = school?.schoolName || 'Your school';
   const schoolCode = school?.schoolCode || '';
@@ -127,6 +131,32 @@ export default function AdministrativeDashboard() {
             ))}
           </div>
         </section>
+
+        {canContactSupport && (
+          <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                <LifeBuoy size={19} />
+              </span>
+              <div>
+                <p className="text-sm font-bold text-[#071A52]">
+                  Having an issue or complaint?
+                </p>
+                <p className="mt-0.5 text-[13px] leading-5 text-slate-500">
+                  Contact ScholaNode support and we will help you sort it out.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              to="/help-support"
+              className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-[13px] font-bold text-[#071A52] transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-100"
+            >
+              Contact support
+              <ArrowUpRight size={15} />
+            </Link>
+          </section>
+        )}
       </div>
     </main>
   );
