@@ -22,6 +22,7 @@ import PaymentPage from './public/pages/payment/PaymentPage';
 import PaymentSuccessPage from './public/pages/payment/PaymentSuccessPage';
 
 import PrivateAppShell from './private/PrivateAppShell';
+import RequireAdministrator from './private/RequireAdministrator';
 import Dashboard from './private/pages/dashboard/Dashboard';
 import MyClassPage from './private/pages/dashboard/MyClassPage';
 import ProfilePage from './private/pages/ProfilePage';
@@ -122,21 +123,21 @@ function PrivateRoutes() {
       <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
 
       {/* People */}
-      <Route path="/students" element={<PrivateAppShell pageTitle="Students"><StudentManagement /></PrivateAppShell>} />
-      <Route path="/staff" element={<PrivateAppShell pageTitle="Staff"><StaffManagement /></PrivateAppShell>} />
-      <Route path="/parents" element={<PrivateAppShell pageTitle="Parents"><ParentManagement /></PrivateAppShell>} />
+      <Route path="/students" element={<RequireAdministrator><PrivateAppShell pageTitle="Students"><StudentManagement /></PrivateAppShell></RequireAdministrator>} />
+      <Route path="/staff" element={<RequireAdministrator allowOwner><PrivateAppShell pageTitle="Staff"><StaffManagement /></PrivateAppShell></RequireAdministrator>} />
+      <Route path="/parents" element={<RequireAdministrator><PrivateAppShell pageTitle="Parents"><ParentManagement /></PrivateAppShell></RequireAdministrator>} />
 
       {/* Academic */}
-      <Route path="/academic-setup" element={<PrivateAppShell pageTitle="Academic Setup"><AcademicSetup /></PrivateAppShell>} />
-      <Route path="/classes" element={<PrivateAppShell pageTitle="Classes"><Classes /></PrivateAppShell>} />
-      <Route path="/subjects" element={<PrivateAppShell pageTitle="Subjects"><Subjects /></PrivateAppShell>} />
-      <Route path="/sessions-terms" element={<PrivateAppShell pageTitle="Sessions & Terms"><SessionsTerms /></PrivateAppShell>} />
+      <Route path="/academic-setup" element={<RequireAdministrator><PrivateAppShell pageTitle="Academic Setup"><AcademicSetup /></PrivateAppShell></RequireAdministrator>} />
+      <Route path="/classes" element={<RequireAdministrator><PrivateAppShell pageTitle="Classes"><Classes /></PrivateAppShell></RequireAdministrator>} />
+      <Route path="/subjects" element={<RequireAdministrator><PrivateAppShell pageTitle="Subjects"><Subjects /></PrivateAppShell></RequireAdministrator>} />
+      <Route path="/sessions-terms" element={<RequireAdministrator><PrivateAppShell pageTitle="Sessions & Terms"><SessionsTerms /></PrivateAppShell></RequireAdministrator>} />
       <Route path="/my-class" element={<PrivateAppShell pageTitle="My Class"><MyClassPage /></PrivateAppShell>} />
       <Route path="/results" element={<PrivateAppShell pageTitle="Examinations & Results"><PlaceholderPage title="Examinations & Results" description="Exam results, assessment records, and report generation will appear here." /></PrivateAppShell>} />
 
       {/* Attendance & security */}
       <Route path="/attendance" element={<PrivateAppShell pageTitle="Form Master Attendance"><FormMasterAttendance /></PrivateAppShell>} />
-      <Route path="/gate-access" element={<PrivateAppShell pageTitle="Gate Access"><GateAccess /></PrivateAppShell>} />
+      <Route path="/gate-access" element={<RequireAdministrator><PrivateAppShell pageTitle="Gate Access"><GateAccess /></PrivateAppShell></RequireAdministrator>} />
       <Route path="/verify-student" element={<PrivateAppShell pageTitle="Verify Student"><VerifyStudent /></PrivateAppShell>} />
       <Route path="/scan-history" element={<PrivateAppShell pageTitle="Gate Scan History"><ScanHistoryPage /></PrivateAppShell>} />
 
@@ -155,11 +156,11 @@ function PrivateRoutes() {
       <Route path="/student-results" element={<PrivateAppShell pageTitle="My Results"><PlaceholderPage title="My Results" description="Published scores, grades, and positions will appear here." /></PrivateAppShell>} />
 
       {/* Operations & support */}
-      <Route path="/messages" element={<PrivateAppShell pageTitle="Messages"><PlaceholderPage title="Messages" description="Internal staff communication will appear here." /></PrivateAppShell>} />
+      <Route path="/messages" element={<RequireAdministrator><PrivateAppShell pageTitle="Messages"><PlaceholderPage title="Messages" description="Internal staff communication will appear here." /></PrivateAppShell></RequireAdministrator>} />
       <Route path="/notifications" element={<PrivateAppShell pageTitle="Notifications"><PlaceholderPage title="Notifications" description="Notifications and inbox alerts will appear here." /></PrivateAppShell>} />
       <Route path="/timetable" element={<PrivateAppShell pageTitle="Timetable"><Timetable /></PrivateAppShell>} />
       <Route path="/help-support" element={<HelpSupportRoute />} />
-      <Route path="/school-inquiries" element={<PrivateAppShell pageTitle="School Inquiries"><SchoolInquiries /></PrivateAppShell>} />
+      <Route path="/school-inquiries" element={<RequireAdministrator><PrivateAppShell pageTitle="School Inquiries"><SchoolInquiries /></PrivateAppShell></RequireAdministrator>} />
 
       {/* School account */}
       <Route path="/school-profile" element={<PrivateAppShell pageTitle="School Profile"><SchoolProfile /></PrivateAppShell>} />
