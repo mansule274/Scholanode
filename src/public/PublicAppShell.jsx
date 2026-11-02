@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
+import PublicFooter from './components/PublicFooter';
 
 const navigation = [
   { label: 'Features', to: '/features' },
@@ -10,7 +11,7 @@ const navigation = [
 
 export default function PublicAppShell({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
@@ -54,7 +55,9 @@ export default function PublicAppShell({ children }) {
         </div>
       </header>
 
-      <main>{children}</main>
+      <main className="flex-1">{children}</main>
+
+      <PublicFooter />
     </div>
   );
 }

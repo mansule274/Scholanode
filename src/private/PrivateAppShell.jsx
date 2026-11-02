@@ -14,6 +14,7 @@ import {
 import { useUserContext } from '../context/UserContext';
 import { getRoleLabel, normalizeRole, ROLES } from '../utils/roles';
 import { getSidebarSectionsForUser } from './sidebarNavigation';
+import PrivateFooter from './components/PrivateFooter';
 
 const sectionToneClasses = {
   blue: 'border-blue-100 bg-blue-50/50 text-blue-800',
@@ -245,7 +246,7 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="lg:pl-[270px]">
+      <div className="flex min-h-screen flex-col lg:pl-[270px]">
         {/* Top Header */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
           <div className="flex h-[80px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
@@ -379,7 +380,9 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
         </header>
 
         {/* Page Body */}
-        <main className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+
+        <PrivateFooter />
       </div>
 
       {/* Mobile Sidebar Drawer */}

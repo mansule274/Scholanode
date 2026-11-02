@@ -100,7 +100,7 @@ export const ContextProvider = ({ children }) => {
       const response = await privateAxiosInstance.get('/auths/me');
       const profile = setAuthProfile(response?.data);
 
-      if (profile.user) {
+      if (profile?.user) {
         console.log('Fetched logged-in profile:', profile);
         console.log('all response data:', response?.data);
         return profile.user;

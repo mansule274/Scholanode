@@ -795,18 +795,6 @@ export default function SchoolContactPage() {
                 </form>
               </section>
             </div>
-
-            {/* Footer */}
-            <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">
-              <div className="flex items-center gap-2 text-sm font-bold text-[#071A52]">
-                <GraduationCap size={19} />
-                ScholaNode
-              </div>
-
-              <p className="text-xs leading-5 text-slate-500">
-                Helping schools and communities stay connected.
-              </p>
-            </footer>
           </>
         )}
       </main>

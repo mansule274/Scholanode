@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ExternalLink,
   Eye,
   EyeOff,
   GraduationCap,
@@ -15,7 +14,6 @@ import {
   Phone,
   SearchX,
   Shield,
-  ShieldCheck,
   User,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -87,11 +85,6 @@ function writeRememberedLoginId(schoolCode, loginId, remember) {
     // Storage can be unavailable in private browsing; remembering is optional.
   }
 }
-
-const normalizeWebsite = (value) => {
-  if (!value) return null;
-  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
-};
 
 export default function SchoolLoginPage({ onBack }) {
   const navigate = useNavigate();
@@ -283,7 +276,6 @@ export default function SchoolLoginPage({ onBack }) {
   const schoolCode = activeSchool?.schoolCode || '';
   const levelLabel = formatSchoolLevel(activeSchool?.schoolLevel);
   const ownershipLabel = formatOwnershipType(activeSchool?.ownershipType);
-  const website = normalizeWebsite(activeSchool?.website);
   const supportEmail = activeSchool?.supportEmail || null;
   const supportPhone = activeSchool?.supportPhone || null;
   const hasSupportInfo = Boolean(supportEmail || supportPhone);
@@ -664,23 +656,11 @@ export default function SchoolLoginPage({ onBack }) {
                       your account.
                     </p>
                   )}
-
-                  {website && (
-                    <a
-                      href={website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0EA5E9] hover:underline"
-                    >
-                      Visit school website
-                      <ExternalLink size={15} />
-                    </a>
-                  )}
                 </section>
               </aside>
             </div>
 
-            {(activeSchool.welcomeMessage || website) && (
+            {activeSchool.welcomeMessage && (
               <section className="animate-sn-fade-up mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0EA5E9]">
                   About the school
@@ -690,37 +670,11 @@ export default function SchoolLoginPage({ onBack }) {
                   {schoolName}
                 </h2>
 
-                {activeSchool.welcomeMessage && (
-                  <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
-                    {activeSchool.welcomeMessage}
-                  </p>
-                )}
-
-                {website && (
-                  <a
-                    href={website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#071A52] hover:underline"
-                  >
-                    Visit the official school website
-                    <ExternalLink size={16} />
-                  </a>
-                )}
+                <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
+                  {activeSchool.welcomeMessage}
+                </p>
               </section>
             )}
-
-            <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 text-center sm:flex-row sm:text-left">
-              <div className="flex items-center gap-2 text-sm font-bold text-[#071A52]">
-                <GraduationCap size={19} />
-                ScholaNode
-              </div>
-
-              <p className="inline-flex items-center gap-2 text-xs leading-5 text-slate-500">
-                <ShieldCheck size={14} />
-                Secure access for students, parents, and school staff.
-              </p>
-            </footer>
           </>
         )}
       </main>

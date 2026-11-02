@@ -1,7 +1,6 @@
 
 
 import FeaturesBar from "../components/FeaturesBar";
-import Footer from "../../components/Footer";
 import Hero from "../components/Hero";
 import SchoolSearch from "../components/SchoolSearch";
 import WelcomeCard from "../components/WelcomeCard";
@@ -14,7 +13,6 @@ const HomePage = () => {
           <WelcomeCard />
           <SchoolSearch />
           <FeaturesBar />
-          <Footer />
  </main>
 
     );

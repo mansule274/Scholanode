@@ -720,42 +720,6 @@ export default function AboutUs() {
             </div>
           </section>
         </Reveal>
-
-        {/* Footer */}
-        <footer className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-200 py-6 text-center sm:flex-row sm:text-left">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-sm font-bold text-[#071A52]"
-          >
-            <GraduationCap size={20} />
-            ScholaNode
-          </Link>
-
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-slate-500">
-            <Link to="/features" className="transition hover:text-[#123A8F]">
-              Features
-            </Link>
-            <Link to="/pricing" className="transition hover:text-[#123A8F]">
-              Pricing
-            </Link>
-            <Link to="/contact" className="transition hover:text-[#123A8F]">
-              Contact
-            </Link>
-            <a
-              href="https://masjiba.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 transition hover:text-[#123A8F]"
-            >
-              HumNode
-              <ArrowUpRight size={13} />
-            </a>
-          </div>
-
-          <p className="text-xs leading-5 text-slate-400">
-            © {new Date().getFullYear()} ScholaNode · A HumNode product
-          </p>
-        </footer>
       </div>
     </div>
   );

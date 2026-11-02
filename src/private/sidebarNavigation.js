@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Layers,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   MessageSquareText,
   Settings2,
@@ -20,7 +21,7 @@ import {
   History,
   Megaphone,
 } from 'lucide-react';
-import { normalizeRole, ROLES } from '../utils/roles';
+import { canAccessSchoolSupport, normalizeRole, ROLES } from '../utils/roles';
 
 const administratorRoles = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR];
 
@@ -122,6 +123,7 @@ const navigation = [
       { label: 'School Profile', icon: Building2, path: '/school-profile' },
       { label: 'Settings', icon: Settings2, path: '/settings' },
       { label: 'Notifications', icon: Bell, path: '/notifications' },
+      { label: 'Help & Support', icon: LifeBuoy, path: '/help-support', requiresSupportAccess: true },
       { label: 'Refer & Earn', icon: Sparkles, path: '/refer-earn' },
       { label: 'Logout', icon: LogOut, isLogout: true },
     ],
@@ -141,6 +143,10 @@ export function getSidebarSectionsForUser(user) {
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        if (item.requiresSupportAccess) {
+          return canAccessSchoolSupport(user);
+        }
+
         if (item.requiresFormMaster && !isFormMaster) {
           return false;
         }

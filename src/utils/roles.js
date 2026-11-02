@@ -59,6 +59,19 @@ export function isLeaderOrVice(role) {
   return normalizedRole === ROLES.LEADER || normalizedRole === ROLES.VICE_LEADER;
 }
 
+export const SCHOOL_SUPPORT_ROLES = Object.freeze([
+  ROLES.LEADER,
+  ROLES.VICE_LEADER,
+  ROLES.ADMINISTRATOR,
+  ROLES.EXAM_OFFICER,
+]);
+
+export function canAccessSchoolSupport(user) {
+  if (user?.isOwner) return true;
+
+  return SCHOOL_SUPPORT_ROLES.includes(normalizeRole(user?.role));
+}
+
 export function canAccessNavItem(item, userRole) {
   const normalizedRole = normalizeRole(userRole);
 

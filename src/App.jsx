@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import logoMark from './assets/vite.svg';
 import { useUserContext } from './context/UserContext';
+import { canAccessSchoolSupport } from './utils/roles';
 
 import PublicAppShell from './public/PublicAppShell';
 import HomePage from './public/pages/HomePage';
@@ -98,6 +99,20 @@ function PublicRoutes() {
   );
 }
 
+function HelpSupportRoute() {
+  const { user } = useUserContext();
+
+  if (!canAccessSchoolSupport(user)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <PrivateAppShell pageTitle="Help & Support">
+      <HelpSupport />
+    </PrivateAppShell>
+  );
+}
+
 function PrivateRoutes() {
   return (
     <Routes>
@@ -142,7 +157,7 @@ function PrivateRoutes() {
       <Route path="/messages" element={<PrivateAppShell pageTitle="Messages"><PlaceholderPage title="Messages" description="Internal staff communication will appear here." /></PrivateAppShell>} />
       <Route path="/notifications" element={<PrivateAppShell pageTitle="Notifications"><PlaceholderPage title="Notifications" description="Notifications and inbox alerts will appear here." /></PrivateAppShell>} />
       <Route path="/timetable" element={<PrivateAppShell pageTitle="Timetable"><Timetable /></PrivateAppShell>} />
-      <Route path="/help-support" element={<PrivateAppShell pageTitle="Help & Support"><HelpSupport /></PrivateAppShell>} />
+      <Route path="/help-support" element={<HelpSupportRoute />} />
       <Route path="/school-inquiries" element={<PrivateAppShell pageTitle="School Inquiries"><SchoolInquiries /></PrivateAppShell>} />
 
       {/* School account */}

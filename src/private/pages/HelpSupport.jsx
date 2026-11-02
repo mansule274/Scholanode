@@ -1,1252 +1,1261 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
-  ArrowRight,
-  BookOpen,
+  Bug,
   CheckCircle2,
   ChevronRight,
-  Clock3,
-  FileText,
+  CreditCard,
   Headphones,
-  Inbox,
+  HelpCircle,
+  KeyRound,
   Lightbulb,
-  LifeBuoy,
-  MessageCircle,
-  MessageSquareText,
-  Paperclip,
+  Loader2,
+  MessageSquare,
+  MessagesSquare,
   Plus,
-  Search,
-  Send,
-  ShieldCheck,
-  Sparkles,
+  RefreshCw,
+  RotateCcw,
+  SendHorizonal,
+  Wrench,
   X,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'scholanode:help-support:v1';
+import { useUserContext } from '../../context/UserContext';
+import {
+  createSupportConversation,
+  getMySupportConversations,
+  getSupportMessages,
+  reopenSupportConversation,
+  sendSupportMessage,
+} from './support/supportApi';
+import {
+  SUPPORT_CATEGORIES,
+  SUPPORT_FILTERS,
+  extractConversationList,
+  extractCreatedConversation,
+  extractCreatedMessage,
+  extractMessageList,
+  formatSupportDay,
+  formatSupportListTime,
+  formatSupportTime,
+  getCategoryLabel,
+  getConversationPreview,
+  getStatusLabel,
+  getStatusStyle,
+  isSameSupportDay,
+  mergeConversations,
+  mergeMessages,
+  normalizeConversation,
+  normalizeMessage,
+  normalizePagination,
+} from './support/supportDisplay';
 
-const CATEGORIES = [
-  { value: 'TECHNICAL_SUPPORT', label: 'Technical problem' },
-  { value: 'ACCOUNT_ACCESS', label: 'Login or account access' },
-  { value: 'BILLING', label: 'Billing and payments' },
-  { value: 'FEATURE_REQUEST', label: 'Feature request' },
-  { value: 'SUGGESTION', label: 'Suggestion' },
-  { value: 'GENERAL_FEEDBACK', label: 'General feedback' },
-  { value: 'OTHER', label: 'Something else' },
-];
+const CONVERSATION_PAGE_SIZE = 30;
+const MESSAGE_PAGE_SIZE = 100;
+const EMPTY_PAGINATION = {
+  totalItems: 0,
+  currentPage: 1,
+  pageSize: CONVERSATION_PAGE_SIZE,
+  totalPages: 1,
+};
+const DEFAULT_DRAFT = { category: 'TECHNICAL_ISSUE', message: '' };
 
-const STATUS_CONFIG = {
-  OPEN: {
-    label: 'Open',
-    className: 'bg-sky-50 text-sky-700 ring-sky-200',
-  },
-  IN_PROGRESS: {
-    label: 'In progress',
-    className: 'bg-amber-50 text-amber-700 ring-amber-200',
-  },
-  RESOLVED: {
-    label: 'Resolved',
-    className: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  },
-  CLOSED: {
-    label: 'Closed',
-    className: 'bg-slate-100 text-slate-600 ring-slate-200',
-  },
+const CATEGORY_ICONS = {
+  TECHNICAL_ISSUE: Wrench,
+  ACCOUNT_AND_ACCESS: KeyRound,
+  BILLING_AND_PAYMENT: CreditCard,
+  BUG_REPORT: Bug,
+  FEATURE_REQUEST: Lightbulb,
+  GENERAL_INQUIRY: HelpCircle,
+  OTHER: MessageSquare,
 };
 
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const STATUS_DOTS = {
+  OPEN: 'bg-sky-500',
+  IN_PROGRESS: 'bg-amber-500',
+  RESOLVED: 'bg-emerald-500',
+  CLOSED: 'bg-slate-400',
+};
+
+function getErrorMessage(error, fallback) {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    fallback
+  );
 }
 
-function formatDate(value) {
-  if (!value) return '';
-
-  return new Date(value).toLocaleDateString('en-NG', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(value) {
-  if (!value) return '';
-
-  return new Date(value).toLocaleString('en-NG', {
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function getCategoryLabel(value) {
-  return CATEGORIES.find((item) => item.value === value)?.label || 'General enquiry';
-}
-
-function createDemoConversations() {
-  const now = Date.now();
-
-  return [
-    {
-      id: 'demo-101',
-      reference: 'SN-2026-0101',
-      subject: 'Unable to generate attendance report',
-      category: 'TECHNICAL_SUPPORT',
-      status: 'IN_PROGRESS',
-      isDemo: true,
-      createdAt: new Date(now - 1000 * 60 * 60 * 24 * 2).toISOString(),
-      updatedAt: new Date(now - 1000 * 60 * 35).toISOString(),
-      messages: [
-        {
-          id: 'demo-101-m1',
-          sender: 'school',
-          senderName: 'School administrator',
-          text: 'We are having difficulty generating our class attendance report. The report does not appear after we select the term.',
-          createdAt: new Date(now - 1000 * 60 * 60 * 24 * 2).toISOString(),
-        },
-        {
-          id: 'demo-101-m2',
-          sender: 'support',
-          senderName: 'ScholaNode Support',
-          text: 'Thank you for explaining the problem. Please include the affected class and term if you have not already done so. This will help the team investigate.',
-          createdAt: new Date(now - 1000 * 60 * 60 * 24 * 1.8).toISOString(),
-        },
-        {
-          id: 'demo-101-m3',
-          sender: 'school',
-          senderName: 'School administrator',
-          text: 'It affects Primary 5A for the first term.',
-          createdAt: new Date(now - 1000 * 60 * 35).toISOString(),
-        },
-      ],
-    },
-    {
-      id: 'demo-102',
-      reference: 'SN-2026-0102',
-      subject: 'Suggestion for parent notifications',
-      category: 'SUGGESTION',
-      status: 'OPEN',
-      isDemo: true,
-      createdAt: new Date(now - 1000 * 60 * 60 * 24 * 5).toISOString(),
-      updatedAt: new Date(now - 1000 * 60 * 60 * 24 * 5).toISOString(),
-      messages: [
-        {
-          id: 'demo-102-m1',
-          sender: 'school',
-          senderName: 'School administrator',
-          text: 'We would appreciate more options for controlling which school updates parents receive.',
-          createdAt: new Date(now - 1000 * 60 * 60 * 24 * 5).toISOString(),
-        },
-      ],
-    },
-  ];
-}
-
-function readConversations() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-
-    if (stored !== null) {
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : createDemoConversations();
-    }
-  } catch (error) {
-    console.warn('Could not read Help & Support history.', error);
-  }
-
-  return createDemoConversations();
-}
-
-function StatusBadge({ status }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.OPEN;
+function CategoryAvatar({ category, size = 'md' }) {
+  const Icon = CATEGORY_ICONS[category] || MessageSquare;
+  const dimensions =
+    size === 'lg' ? 'h-11 w-11 rounded-2xl' : 'h-10 w-10 rounded-xl';
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${config.className}`}
+      className={`flex shrink-0 items-center justify-center bg-blue-50 text-[#123A8F] ${dimensions}`}
     >
-      {status === 'RESOLVED' ? (
-        <CheckCircle2 size={13} />
-      ) : status === 'IN_PROGRESS' ? (
-        <Clock3 size={13} />
-      ) : (
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      )}
-      {config.label}
+      <Icon size={size === 'lg' ? 20 : 18} />
     </span>
   );
 }
 
-function CategoryIcon({ category, size = 20 }) {
-  if (category === 'FEATURE_REQUEST' || category === 'SUGGESTION') {
-    return <Lightbulb size={size} />;
-  }
-
-  if (category === 'GENERAL_FEEDBACK') {
-    return <MessageSquareText size={size} />;
-  }
-
-  return <LifeBuoy size={size} />;
+function StatusBadge({ status }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold ${getStatusStyle(
+        status
+      )}`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          STATUS_DOTS[status] || STATUS_DOTS.OPEN
+        }`}
+      />
+      {getStatusLabel(status)}
+    </span>
+  );
 }
 
-function EmptyState({ onStart }) {
+function MessageComposer({
+  value,
+  onChange,
+  onSubmit,
+  sending = false,
+  disabled = false,
+  placeholder,
+  autoFocus = false,
+  error = '',
+  hint = '',
+}) {
   return (
-    <div className="flex flex-col items-center px-6 py-12 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-        <Inbox size={30} />
+    <form onSubmit={onSubmit} className="space-y-2">
+      {error && (
+        <p
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] font-medium text-rose-700"
+        >
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          maxLength={10000}
+          disabled={disabled || sending}
+          autoFocus={autoFocus}
+          aria-label="Message"
+          className="h-11 min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
+        />
+
+        <button
+          type="submit"
+          disabled={sending || disabled || !value.trim()}
+          aria-label="Send message"
+          className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#071A52] text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {sending ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <SendHorizonal size={18} />
+          )}
+        </button>
       </div>
 
-      <h3 className="text-lg font-bold text-[#071A52]">
+      {hint && <p className="px-1 text-xs leading-5 text-slate-400">{hint}</p>}
+    </form>
+  );
+}
+
+function ConversationSkeleton() {
+  return (
+    <div className="divide-y divide-slate-100" aria-hidden="true">
+      {[0, 1, 2, 3].map((index) => (
+        <div key={index} className="flex animate-pulse items-start gap-3 p-3.5">
+          <div className="h-10 w-10 shrink-0 rounded-xl bg-slate-100" />
+          <div className="min-w-0 flex-1">
+            <div className="h-3.5 w-28 rounded bg-slate-100" />
+            <div className="mt-2 h-3 w-full rounded bg-slate-100" />
+            <div className="mt-2 h-3 w-20 rounded bg-slate-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MessageSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          className={`flex ${index % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+        >
+          <div className="h-16 w-3/5 animate-pulse rounded-2xl bg-slate-200/70" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyConversationList({ onStart }) {
+  return (
+    <div className="flex flex-col items-center px-5 py-12 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F]">
+        <MessagesSquare size={26} />
+      </div>
+      <h3 className="mt-3 text-base font-extrabold text-[#071A52]">
         No conversations yet
       </h3>
-
-      <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-        Whenever you need help or want to share an idea, start a conversation
-        here. You can return to it at any time.
+      <p className="mt-1 max-w-xs text-[13px] leading-5 text-slate-500">
+        Start a conversation and our team will reply here. You can return to
+        it at any time.
       </p>
-
       <button
         type="button"
         onClick={onStart}
-        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#123A8F]"
+        className="mt-4 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
       >
-        <Plus size={17} />
-        Start a conversation
+        <Plus size={16} />
+        New conversation
       </button>
     </div>
   );
 }
 
 export default function HelpSupport() {
-  const [conversations, setConversations] = useState(readConversations);
-  const [view, setView] = useState('home');
-  const [conversationType, setConversationType] = useState('problem');
+  const { user } = useUserContext();
+  const userId = user?.id ?? null;
+
+  const [conversations, setConversations] = useState([]);
+  const [listPagination, setListPagination] = useState(EMPTY_PAGINATION);
+  const [listPage, setListPage] = useState(1);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [listNotice, setListNotice] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [activeId, setActiveId] = useState(null);
+  const [activeConversation, setActiveConversation] = useState(null);
 
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('ALL');
+  const [messages, setMessages] = useState([]);
+  const [messagesPage, setMessagesPage] = useState(1);
+  const [messagesPagination, setMessagesPagination] = useState(EMPTY_PAGINATION);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState('');
 
-  const [subject, setSubject] = useState('');
-  const [category, setCategory] = useState('TECHNICAL_SUPPORT');
-  const [description, setDescription] = useState('');
-  const [attachmentName, setAttachmentName] = useState('');
-  const [formError, setFormError] = useState('');
+  const [composerText, setComposerText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState('');
 
-  const [reply, setReply] = useState('');
-  const [replyAttachment, setReplyAttachment] = useState('');
-  const [notice, setNotice] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [draft, setDraft] = useState(DEFAULT_DRAFT);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
-  const replyInputRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const messagesRef = useRef(null);
+  const stickToBottomRef = useRef(true);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
-    } catch (error) {
-      console.warn('Could not save Help & Support history.', error);
-    }
-  }, [conversations]);
+  const loadConversations = useCallback(
+    async ({ page = 1, append = false, silent = false } = {}) => {
+      if (!silent) {
+        setListLoading(true);
+        setListError('');
+      }
 
-  const activeConversation = useMemo(
-    () => conversations.find((item) => item.id === activeId) || null,
-    [conversations, activeId]
+      try {
+        const response = await getMySupportConversations({
+          page,
+          limit: CONVERSATION_PAGE_SIZE,
+          status: statusFilter === 'ALL' ? '' : statusFilter,
+        });
+
+        const { conversations: list, pagination } =
+          extractConversationList(response);
+        const normalized = list
+          .map((item) => normalizeConversation(item, userId))
+          .filter(Boolean);
+
+        setConversations((current) =>
+          append
+            ? mergeConversations(current, normalized)
+            : mergeConversations([], normalized)
+        );
+        setListPagination(
+          normalizePagination(
+            pagination,
+            page,
+            CONVERSATION_PAGE_SIZE,
+            append ? 0 : normalized.length
+          )
+        );
+        if (!silent) setListPage(page);
+
+        setActiveConversation((current) => {
+          if (!current) return current;
+
+          return normalized.find((item) => item.id === current.id) || current;
+        });
+      } catch (error) {
+        if (!silent) {
+          if (!append) setConversations([]);
+
+          setListError(
+            getErrorMessage(
+              error,
+              'We could not load your conversations. Check your connection and try again.'
+            )
+          );
+        }
+      } finally {
+        if (!silent) setListLoading(false);
+      }
+    },
+    [statusFilter, userId]
   );
 
-  const filteredConversations = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  useEffect(() => {
+    let cancelled = false;
 
-    return [...conversations]
-      .filter((item) => filter === 'ALL' || item.status === filter)
-      .filter((item) => {
-        if (!query) return true;
+    const load = async () => {
+      if (cancelled) return;
 
-        return [
-          item.subject,
-          item.reference,
-          getCategoryLabel(item.category),
-          ...item.messages.map((message) => message.text),
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(query);
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-  }, [conversations, filter, search]);
-
-  const openCount = conversations.filter(
-    (item) => item.status === 'OPEN' || item.status === 'IN_PROGRESS'
-  ).length;
-
-  const resolvedCount = conversations.filter(
-    (item) => item.status === 'RESOLVED'
-  ).length;
-
-  function resetForm() {
-    setSubject('');
-    setDescription('');
-    setAttachmentName('');
-    setFormError('');
-    setNotice('');
-  }
-
-  function startConversation(type) {
-    setConversationType(type);
-    setCategory(type === 'feedback' ? 'SUGGESTION' : 'TECHNICAL_SUPPORT');
-    resetForm();
-    setView('new');
-  }
-
-  function goHome() {
-    setView('home');
-    setActiveId(null);
-    setReply('');
-    setReplyAttachment('');
-    setNotice('');
-    resetForm();
-  }
-
-  function openConversation(id) {
-    setActiveId(id);
-    setView('thread');
-    setReply('');
-    setReplyAttachment('');
-    setNotice('');
-  }
-
-  function handleCreateConversation(event) {
-    event.preventDefault();
-    setFormError('');
-
-    if (!subject.trim()) {
-      setFormError('Please enter a short subject for your conversation.');
-      return;
-    }
-
-    if (!description.trim()) {
-      setFormError('Please describe how we can help.');
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const conversation = {
-      id: makeId(),
-      reference: `SN-${new Date().getFullYear()}-${String(
-        conversations.filter((item) => !item.isDemo).length + 1
-      ).padStart(4, '0')}`,
-      subject: subject.trim(),
-      category,
-      status: 'OPEN',
-      isDemo: false,
-      createdAt: now,
-      updatedAt: now,
-      messages: [
-        {
-          id: makeId(),
-          sender: 'school',
-          senderName: 'Your school',
-          text: description.trim(),
-          attachmentName: attachmentName || '',
-          createdAt: now,
-        },
-      ],
+      await loadConversations({ page: 1 });
     };
 
-    setConversations((previous) => [conversation, ...previous]);
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadConversations, refreshKey]);
+
+  const loadMessages = useCallback(
+    async ({ page = 1, append = false, silent = false } = {}) => {
+      if (!activeId) return;
+
+      if (!silent) {
+        setMessagesLoading(true);
+        setMessagesError('');
+      }
+
+      try {
+        const response = await getSupportMessages(activeId, {
+          page,
+          limit: MESSAGE_PAGE_SIZE,
+        });
+
+        const { messages: list, pagination } = extractMessageList(response);
+        const normalized = list
+          .map((item, index) => normalizeMessage(item, index, userId))
+          .filter(Boolean);
+
+        setMessages((current) =>
+          append
+            ? mergeMessages(current, normalized)
+            : mergeMessages([], normalized)
+        );
+        setMessagesPagination(
+          normalizePagination(pagination, page, MESSAGE_PAGE_SIZE)
+        );
+        if (!silent) setMessagesPage(page);
+
+        const latest = normalized.reduce((current, item) => {
+          if (!current) return item;
+
+          const currentTime = new Date(current.createdAt || 0).getTime();
+          const itemTime = new Date(item.createdAt || 0).getTime();
+
+          return itemTime >= currentTime ? item : current;
+        }, null);
+
+        if (latest) {
+          setConversations((current) =>
+            current.map((conversation) =>
+              conversation.id === activeId
+                ? {
+                    ...conversation,
+                    lastMessage: latest,
+                    lastMessageText: latest.text?.trim() || '',
+                    updatedAt: latest.createdAt || conversation.updatedAt,
+                  }
+                : conversation
+            )
+          );
+        }
+      } catch (error) {
+        if (!silent) {
+          setMessagesError(
+            getErrorMessage(
+              error,
+              'We could not load this conversation. Check your connection and try again.'
+            )
+          );
+        }
+      } finally {
+        if (!silent) setMessagesLoading(false);
+      }
+    },
+    [activeId, userId]
+  );
+
+  useEffect(() => {
+    if (!activeId) return undefined;
+
+    const load = async () => {
+      await loadMessages({ page: 1 });
+    };
+
+    load();
+
+    return undefined;
+  }, [activeId, loadMessages]);
+
+  useEffect(() => {
+    if (!activeId) return undefined;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+
+      loadMessages({ page: 1, append: true, silent: true });
+      loadConversations({ page: 1, append: true, silent: true });
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [activeId, loadMessages, loadConversations]);
+
+  useEffect(() => {
+    const node = messagesRef.current;
+
+    if (!node || !stickToBottomRef.current) return;
+
+    node.scrollTop = node.scrollHeight;
+  }, [messages]);
+
+  const handleMessagesScroll = (event) => {
+    const node = event.currentTarget;
+
+    stickToBottomRef.current =
+      node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+  };
+
+  const conversationStatus = activeConversation?.status || 'OPEN';
+  const canReply =
+    conversationStatus === 'OPEN' || conversationStatus === 'IN_PROGRESS';
+  const hasMoreMessages = messagesPagination.totalPages > messagesPage;
+
+  function resetThreadState() {
+    setMessages([]);
+    setMessagesLoading(true);
+    setMessagesPage(1);
+    setMessagesPagination(EMPTY_PAGINATION);
+    setMessagesError('');
+    setComposerText('');
+    setSendError('');
+    setReopenError('');
+    stickToBottomRef.current = true;
+  }
+
+  function openConversation(conversation) {
+    if (conversation.id === activeId) {
+      setActiveConversation(conversation);
+      return;
+    }
+
+    resetThreadState();
     setActiveId(conversation.id);
-    setReply('');
-    setReplyAttachment('');
-    setView('thread');
-    setNotice(
-      'Conversation created in this browser. Backend submission is not connected yet.'
-    );
+    setActiveConversation(conversation);
   }
 
-  function handleSendReply(event) {
+  function closeThread() {
+    setActiveId(null);
+    setActiveConversation(null);
+    resetThreadState();
+  }
+
+  function openComposer() {
+    setDraft(DEFAULT_DRAFT);
+    setCreateError('');
+    setCreateOpen(true);
+  }
+
+  function closeComposer() {
+    if (creating) return;
+
+    setCreateOpen(false);
+    setDraft(DEFAULT_DRAFT);
+    setCreateError('');
+  }
+
+  function handleStatusFilter(value) {
+    if (value === statusFilter) return;
+
+    setStatusFilter(value);
+    setConversations([]);
+    setListPage(1);
+    setListError('');
+  }
+
+  async function handleCreate(event) {
     event.preventDefault();
 
-    if (!activeConversation || (!reply.trim() && !replyAttachment)) return;
+    const message = draft.message.trim();
 
-    if (activeConversation.status === 'CLOSED') {
-      setNotice(
-        'This conversation is closed. Start a new conversation if you need help with another issue.'
+    if (!draft.category) {
+      setCreateError('Choose a category so the right team can help.');
+      return;
+    }
+
+    if (!message) {
+      setCreateError('Write a short message so we know how to help.');
+      return;
+    }
+
+    setCreating(true);
+    setCreateError('');
+
+    try {
+      const response = await createSupportConversation({
+        category: draft.category,
+        message,
+      });
+
+      const created = extractCreatedConversation(response, userId);
+
+      setCreateOpen(false);
+      setDraft(DEFAULT_DRAFT);
+      setListNotice('');
+      setRefreshKey((value) => value + 1);
+
+      if (created) {
+        const conversation = {
+          ...created,
+          status: created.status || 'OPEN',
+          lastMessageText: created.lastMessageText || message,
+          updatedAt: created.updatedAt || new Date().toISOString(),
+        };
+
+        resetThreadState();
+        setActiveId(conversation.id);
+        setActiveConversation(conversation);
+      } else {
+        setListNotice(
+          'Your conversation was created. Open it from the list to continue.'
+        );
+      }
+    } catch (error) {
+      setCreateError(
+        getErrorMessage(
+          error,
+          'We could not start this conversation. Please try again.'
+        )
       );
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const message = {
-      id: makeId(),
-      sender: 'school',
-      senderName: 'Your school',
-      text: reply.trim(),
-      attachmentName: replyAttachment || '',
-      createdAt: now,
-    };
-
-    setConversations((previous) =>
-      previous.map((item) =>
-        item.id === activeConversation.id
-          ? {
-              ...item,
-              status: item.status === 'RESOLVED' ? 'OPEN' : item.status,
-              updatedAt: now,
-              messages: [...item.messages, message],
-            }
-          : item
-      )
-    );
-
-    setReply('');
-    setReplyAttachment('');
-    setNotice(
-      'Your message has been saved locally. It has not been sent to ScholaNode Support.'
-    );
-  }
-
-  function handleFileChange(event, target) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const maxSize = 5 * 1024 * 1024;
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'application/pdf',
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
-      setNotice('Please choose a PNG, JPG, WebP, or PDF file.');
-      event.target.value = '';
-      return;
-    }
-
-    if (file.size > maxSize) {
-      setNotice('Please choose a file smaller than 5 MB.');
-      event.target.value = '';
-      return;
-    }
-
-    if (target === 'new') {
-      setAttachmentName(file.name);
-    } else {
-      setReplyAttachment(file.name);
-    }
-
-    setNotice('');
-    event.target.value = '';
-  }
-
-  function removeAttachment(target) {
-    if (target === 'new') {
-      setAttachmentName('');
-    } else {
-      setReplyAttachment('');
+    } finally {
+      setCreating(false);
     }
   }
 
-  function startAnotherConversation() {
-    setActiveId(null);
-    startConversation('problem');
+  async function handleSend(event) {
+    event.preventDefault();
+
+    const message = composerText.trim();
+
+    if (!message || !activeId || sending) return;
+
+    setSending(true);
+    setSendError('');
+
+    try {
+      const response = await sendSupportMessage(activeId, { message });
+      const created = extractCreatedMessage(response, userId);
+
+      setComposerText('');
+      stickToBottomRef.current = true;
+
+      if (created) {
+        setMessages((current) => mergeMessages(current, [created]));
+      } else {
+        await loadMessages({ page: 1, append: true, silent: true });
+      }
+
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === activeId
+            ? {
+                ...conversation,
+                lastMessage: created || conversation.lastMessage,
+                lastMessageText: message,
+                updatedAt: created?.createdAt || new Date().toISOString(),
+              }
+            : conversation
+        )
+      );
+    } catch (error) {
+      setSendError(
+        getErrorMessage(
+          error,
+          'Your message was not sent. Check your connection and try again.'
+        )
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
-  const pageTitle =
-    view === 'new'
-      ? conversationType === 'feedback'
-        ? 'Share your feedback'
-        : 'Get help with a problem'
-      : view === 'thread'
-        ? 'Conversation'
-        : 'Help & Support';
+  async function handleReopen() {
+    if (!activeId || reopening) return;
+
+    setReopening(true);
+    setReopenError('');
+
+    try {
+      const response = await reopenSupportConversation(activeId);
+      const updated = extractCreatedConversation(response, userId);
+      const nextStatus = updated?.status || 'OPEN';
+
+      setActiveConversation((current) =>
+        current
+          ? { ...current, ...(updated || {}), status: nextStatus }
+          : current
+      );
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === activeId
+            ? { ...conversation, status: nextStatus }
+            : conversation
+        )
+      );
+
+      stickToBottomRef.current = true;
+      await loadMessages({ page: 1 });
+    } catch (error) {
+      setReopenError(
+        getErrorMessage(
+          error,
+          'We could not reopen this conversation. Please try again.'
+        )
+      );
+    } finally {
+      setReopening(false);
+    }
+  }
+
+  async function handleLoadMore() {
+    if (listLoading) return;
+
+    await loadConversations({ page: listPage + 1, append: true });
+  }
+
+  async function handleLoadEarlierMessages() {
+    if (messagesLoading) return;
+
+    await loadMessages({ page: messagesPage + 1, append: true });
+  }
+
+  const currentListPage = listPagination.currentPage || listPage;
+  const hasMoreConversations = listPagination.totalPages > currentListPage;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* Page heading */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-sky-700">
-              <Headphones size={17} />
-              SCHOOL SUPPORT CENTRE
+    <div className="mx-auto max-w-6xl space-y-4 pb-8">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex items-center gap-1 text-[13px] text-slate-500"
+      >
+        <span>School</span>
+        <ChevronRight size={14} />
+        <span className="font-semibold text-[#071A52]">Help &amp; Support</span>
+      </nav>
+
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] p-5 text-white shadow-sm sm:p-6">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full border-[28px] border-white/[0.06]" />
+        <div className="pointer-events-none absolute -bottom-20 right-28 h-40 w-40 rounded-full bg-cyan-400/[0.08] blur-2xl" />
+
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
+              <Headphones size={23} />
             </div>
 
-            <h1 className="text-2xl font-extrabold tracking-tight text-[#071A52] sm:text-3xl">
-              {pageTitle}
-            </h1>
-
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-              A friendly place to get assistance, ask questions, and share
-              ideas with the ScholaNode team.
-            </p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">
+                Support centre
+              </p>
+              <h1 className="mt-1 text-2xl font-black sm:text-3xl">
+                Help &amp; Support
+              </h1>
+              <p className="mt-1.5 max-w-xl text-sm leading-6 text-blue-100">
+                Message the ScholaNode team about a problem, your account or an
+                idea. Replies from our team appear in the same conversation.
+              </p>
+            </div>
           </div>
 
-          {view !== 'home' && (
-            <button
-              type="button"
-              onClick={goHome}
-              className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              <ArrowLeft size={17} />
-              Back to Help & Support
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={openComposer}
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#0A2463] transition hover:bg-blue-50"
+          >
+            <Plus size={16} />
+            New conversation
+          </button>
         </div>
+      </section>
 
-        {/* Welcoming hero */}
-        <section className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-r from-[#071A52] via-[#0A2463] to-[#123A8F] p-6 text-white shadow-lg shadow-blue-950/10 sm:p-8 lg:p-10">
-          <div className="pointer-events-none absolute -right-10 -top-20 -z-10 h-64 w-64 rounded-full border-[35px] border-white/5" />
-          <div className="pointer-events-none absolute -bottom-24 right-1/4 -z-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+      {listNotice && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-3.5 text-sm text-sky-800"
+        >
+          <span>{listNotice}</span>
+          <button
+            type="button"
+            onClick={() => setListNotice('')}
+            aria-label="Dismiss message"
+            className="cursor-pointer rounded-md p-0.5 transition hover:bg-sky-100"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
-          <div className="grid gap-8 lg:grid-cols-[1.4fr_0.6fr] lg:items-center">
-            <div className="max-w-2xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:text-sm">
-                <Sparkles size={15} />
-                You’re part of the ScholaNode community
-              </div>
-
-              <h2 className="max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl lg:text-[2.7rem]">
-                Your school matters to us.
-                <span className="mt-1 block text-cyan-300">
-                  We’re always here to help.
-                </span>
+      <div className="grid gap-4 lg:h-[calc(100vh-250px)] lg:min-h-[600px] lg:grid-cols-[330px_minmax(0,1fr)] lg:items-stretch">
+        <aside
+          className={`${
+            activeId ? 'hidden lg:flex' : 'flex'
+          } min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-full`}
+        >
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-extrabold text-[#071A52]">
+                Conversations
               </h2>
-
-              <p className="mt-4 max-w-xl text-sm leading-7 text-blue-100 sm:text-base">
-                Running a school comes with enough responsibilities. If
-                something isn’t working, you have a question, or there’s an
-                idea that could make ScholaNode better, please reach out.
-                We’re here to listen and help you move forward.
-              </p>
-
-              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-sm text-blue-100">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={17} className="text-cyan-300" />
-                  Tell us what you need
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={17} className="text-cyan-300" />
-                  Follow the conversation
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={17} className="text-cyan-300" />
-                  Return whenever you need
-                </div>
-              </div>
+              {listLoading && conversations.length > 0 && (
+                <Loader2 size={15} className="animate-spin text-slate-400" />
+              )}
             </div>
 
-            <div className="rounded-2xl border border-white/15 bg-white/[0.08] p-5 backdrop-blur-sm sm:p-6">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-300/15 text-cyan-200">
-                <MessageCircle size={25} />
-              </div>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {SUPPORT_FILTERS.map((filter) => {
+                const active = statusFilter === filter.value;
 
-              <h3 className="text-lg font-bold">Let’s work through it together.</h3>
-
-              <p className="mt-2 text-sm leading-6 text-blue-100">
-                Send us the details, and our support team can review your
-                message and follow up. You don’t need to solve everything
-                on your own.
-              </p>
-
-              <div className="mt-5 flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 p-3.5">
-                <Clock3 size={18} className="mt-0.5 shrink-0 text-cyan-300" />
-                <p className="text-xs leading-5 text-blue-100">
-                  Support conversations are not live chat. Our team may need
-                  time to investigate and respond.
-                </p>
-              </div>
+                return (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => handleStatusFilter(filter.value)}
+                    aria-pressed={active}
+                    className={`shrink-0 cursor-pointer rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      active
+                        ? 'bg-[#071A52] text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </section>
 
-        {/* HOME */}
-        {view === 'home' && (
-          <>
-            {/* Start choices */}
-            <section>
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-[#071A52] sm:text-xl">
-                  How can we help you today?
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Choose the option that best describes what you want to share.
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {listLoading && conversations.length === 0 ? (
+              <ConversationSkeleton />
+            ) : listError && conversations.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                  <AlertCircle size={22} />
+                </div>
+                <h3 className="mt-3 text-base font-bold text-slate-800">
+                  Unable to load conversations
+                </h3>
+                <p className="mt-1 text-[13px] leading-5 text-slate-500">
+                  {listError}
                 </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => startConversation('problem')}
-                  className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md sm:p-6"
+                  onClick={() => setRefreshKey((value) => value + 1)}
+                  className="mt-4 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
                 >
-                  <div className="flex w-full items-start justify-between gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F] transition group-hover:bg-blue-100">
-                      <LifeBuoy size={25} />
-                    </div>
-                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                      Get assistance
-                    </span>
-                  </div>
-
-                  <h3 className="mt-5 text-lg font-bold text-[#071A52]">
-                    Get help with a problem
-                  </h3>
-
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Having trouble using ScholaNode? Need help with your
-                    account, a technical issue, billing, or something you
-                    don’t understand? Tell us about it.
-                  </p>
-
-                  <div className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#123A8F]">
-                    Start a support conversation
-                    <ArrowRight
-                      size={17}
-                      className="transition group-hover:translate-x-1"
-                    />
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => startConversation('feedback')}
-                  className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md sm:p-6"
-                >
-                  <div className="flex w-full items-start justify-between gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-sky-700 transition group-hover:bg-cyan-100">
-                      <Lightbulb size={25} />
-                    </div>
-                    <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800">
-                      We’re listening
-                    </span>
-                  </div>
-
-                  <h3 className="mt-5 text-lg font-bold text-[#071A52]">
-                    Share feedback or an idea
-                  </h3>
-
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Have a suggestion, a feature you would love to see, or an
-                    idea that could make school management easier? We would
-                    love to hear from you.
-                  </p>
-
-                  <div className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-sky-700">
-                    Share your thoughts
-                    <ArrowRight
-                      size={17}
-                      className="transition group-hover:translate-x-1"
-                    />
-                  </div>
+                  <RefreshCw size={15} />
+                  Try again
                 </button>
               </div>
-            </section>
-
-            {/* Conversation history */}
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-[#123A8F]">
-                      <MessageSquareText size={21} />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-[#071A52]">
-                        My conversations
-                      </h2>
-                      <p className="mt-0.5 text-sm text-slate-500">
-                        Keep track of your questions and discussions.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={startAnotherConversation}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#123A8F]"
-                >
-                  <Plus size={17} />
-                  New conversation
-                </button>
-              </div>
-
-              <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-3 sm:p-5">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Total conversations
+            ) : conversations.length === 0 ? (
+              <EmptyConversationList onStart={openComposer} />
+            ) : (
+              <>
+                {listError && (
+                  <p
+                    role="alert"
+                    className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-[13px] text-rose-700"
+                  >
+                    {listError}
                   </p>
-                  <p className="mt-2 text-2xl font-extrabold text-[#071A52]">
-                    {conversations.length}
-                  </p>
-                </div>
+                )}
 
-                <div className="rounded-xl bg-sky-50/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
-                    Awaiting resolution
-                  </p>
-                  <p className="mt-2 text-2xl font-extrabold text-sky-800">
-                    {openCount}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-emerald-50/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Resolved
-                  </p>
-                  <p className="mt-2 text-2xl font-extrabold text-emerald-800">
-                    {resolvedCount}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
-                <div className="relative flex-1">
-                  <Search
-                    size={17}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search conversations..."
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-
-                <select
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                >
-                  <option value="ALL">All statuses</option>
-                  <option value="OPEN">Open</option>
-                  <option value="IN_PROGRESS">In progress</option>
-                  <option value="RESOLVED">Resolved</option>
-                  <option value="CLOSED">Closed</option>
-                </select>
-              </div>
-
-              {filteredConversations.length === 0 ? (
-                <EmptyState onStart={startAnotherConversation} />
-              ) : (
                 <div className="divide-y divide-slate-100">
-                  {filteredConversations.map((conversation) => {
-                    const lastMessage =
-                      conversation.messages[conversation.messages.length - 1];
+                  {conversations.map((conversation) => {
+                    const active = conversation.id === activeId;
 
                     return (
                       <button
-                        type="button"
                         key={conversation.id}
-                        onClick={() => openConversation(conversation.id)}
-                        className="group flex w-full items-start gap-3 p-4 text-left transition hover:bg-slate-50 sm:items-center sm:gap-4 sm:p-5"
+                        type="button"
+                        onClick={() => openConversation(conversation)}
+                        aria-current={active ? 'true' : undefined}
+                        className={`flex w-full cursor-pointer items-start gap-3 p-3.5 text-left transition ${
+                          active
+                            ? 'bg-blue-50/80'
+                            : 'hover:bg-slate-50'
+                        }`}
                       >
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123A8F]">
-                          <CategoryIcon category={conversation.category} size={21} />
-                        </div>
+                        <CategoryAvatar category={conversation.category} />
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-[#071A52] group-hover:text-sky-700">
-                              {conversation.subject}
-                            </h3>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-bold text-[#071A52]">
+                              {getCategoryLabel(conversation.category)}
+                            </span>
+                            <span className="shrink-0 text-xs text-slate-400">
+                              {formatSupportListTime(conversation.updatedAt)}
+                            </span>
+                          </span>
 
-                            {conversation.isDemo && (
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                Sample
-                              </span>
-                            )}
-                          </div>
+                          <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                            {getConversationPreview(conversation)}
+                          </span>
 
-                          <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
-                            {lastMessage?.text || 'No message content'}
-                          </p>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                            <span>{conversation.reference}</span>
-                            <span>{getCategoryLabel(conversation.category)}</span>
-                            <span>{formatDate(conversation.updatedAt)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 flex-col items-end gap-3">
-                          <StatusBadge status={conversation.status} />
-                          <ChevronRight
-                            size={19}
-                            className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-sky-600"
-                          />
-                        </div>
+                          <span className="mt-1.5 flex items-center gap-1.5">
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                STATUS_DOTS[conversation.status] ||
+                                STATUS_DOTS.OPEN
+                              }`}
+                            />
+                            <span className="text-xs font-medium text-slate-500">
+                              {getStatusLabel(conversation.status)}
+                            </span>
+                          </span>
+                        </span>
                       </button>
                     );
                   })}
                 </div>
-              )}
 
-              <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3">
-                <p className="text-xs leading-5 text-slate-500">
-                  Sample conversations are provided for demonstration. Real
-                  conversations will be connected to ScholaNode Support when
-                  the backend is implemented.
-                </p>
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* NEW CONVERSATION FORM */}
-        {view === 'new' && (
-          <section className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 bg-slate-50/70 p-5 sm:p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123A8F]">
-                  {conversationType === 'feedback' ? (
-                    <Lightbulb size={23} />
-                  ) : (
-                    <LifeBuoy size={23} />
-                  )}
-                </div>
-
-                <div>
-                  <h2 className="text-lg font-bold text-[#071A52]">
-                    {conversationType === 'feedback'
-                      ? 'We would love to hear your ideas'
-                      : 'Tell us what you need help with'}
-                  </h2>
-
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {conversationType === 'feedback'
-                      ? 'Your experience and suggestions help us understand how to make ScholaNode more useful for schools.'
-                      : 'Give us a little information so the support team can understand the situation and investigate.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateConversation} className="space-y-5 p-5 sm:p-7">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  What is this about?
-                  <span className="ml-1 text-rose-500">*</span>
-                </label>
-
-                <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                  required
-                >
-                  {CATEGORIES.filter((item) =>
-                    conversationType === 'feedback'
-                      ? [
-                          'FEATURE_REQUEST',
-                          'SUGGESTION',
-                          'GENERAL_FEEDBACK',
-                          'OTHER',
-                        ].includes(item.value)
-                      : ![
-                          'FEATURE_REQUEST',
-                          'SUGGESTION',
-                          'GENERAL_FEEDBACK',
-                        ].includes(item.value)
-                  ).map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Subject
-                  <span className="ml-1 text-rose-500">*</span>
-                </label>
-
-                <input
-                  value={subject}
-                  onChange={(event) => setSubject(event.target.value)}
-                  placeholder={
-                    conversationType === 'feedback'
-                      ? 'e.g. An idea to improve parent communication'
-                      : 'e.g. I cannot access my attendance report'
-                  }
-                  maxLength={120}
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                />
-                <p className="mt-1.5 text-right text-xs text-slate-400">
-                  {subject.length}/120
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  {conversationType === 'feedback'
-                    ? 'Tell us more about your idea'
-                    : 'Describe the problem'}
-                  <span className="ml-1 text-rose-500">*</span>
-                </label>
-
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder={
-                    conversationType === 'feedback'
-                      ? 'What would you like to see improved? How would it help your school?'
-                      : 'What happened? What were you trying to do? Include any helpful details.'
-                  }
-                  rows={6}
-                  maxLength={5000}
-                  required
-                  className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                />
-
-                <p className="mt-1.5 text-right text-xs text-slate-400">
-                  {description.length}/5000
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Attachment <span className="font-normal text-slate-400">(optional)</span>
-                </label>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,.pdf"
-                  onChange={(event) => handleFileChange(event, 'new')}
-                  className="hidden"
-                />
-
-                {attachmentName ? (
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
-                    <div className="flex min-w-0 items-center gap-2 text-sm text-sky-800">
-                      <FileText size={18} className="shrink-0" />
-                      <span className="truncate">{attachmentName}</span>
-                    </div>
-
+                {hasMoreConversations && (
+                  <div className="border-t border-slate-100 p-3 text-center">
                     <button
                       type="button"
-                      onClick={() => removeAttachment('new')}
-                      className="rounded-lg p-1.5 text-slate-500 hover:bg-white hover:text-rose-600"
-                      aria-label="Remove attachment"
+                      onClick={handleLoadMore}
+                      disabled={listLoading}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold text-[#123A8F] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <X size={17} />
+                      {listLoading && (
+                        <Loader2 size={14} className="animate-spin" />
+                      )}
+                      Load more conversations
                     </button>
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600 transition hover:border-sky-400 hover:bg-sky-50 hover:text-sky-700"
-                  >
-                    <Paperclip size={17} />
-                    Attach a screenshot or document
-                  </button>
                 )}
+              </>
+            )}
+          </div>
+        </aside>
 
-                <p className="mt-2 text-xs leading-5 text-slate-400">
-                  PNG, JPG, WebP or PDF, up to 5 MB. In this demo, only the
-                  attachment name is saved; the file is not uploaded.
-                </p>
+        <section
+          className={`${
+            activeId ? 'flex' : 'hidden lg:flex'
+          } h-[calc(100dvh-230px)] min-h-[440px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-full`}
+        >
+          {!activeConversation ? (
+            <div className="flex h-full min-h-[440px] flex-col items-center justify-center px-8 py-16 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F]">
+                <MessagesSquare size={28} />
               </div>
-
-              <div className="flex gap-3 rounded-xl border border-amber-100 bg-amber-50 p-3.5">
-                <ShieldCheck size={19} className="mt-0.5 shrink-0 text-amber-700" />
-                <p className="text-xs leading-5 text-amber-900">
-                  For your security, do not include passwords, payment card
-                  details, or unnecessary sensitive student information.
-                </p>
-              </div>
-
-              {formError && (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {formError}
-                </p>
-              )}
-
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-between">
+              <h2 className="mt-4 text-lg font-extrabold text-[#071A52]">
+                Select a conversation
+              </h2>
+              <p className="mt-1.5 max-w-sm text-sm leading-6 text-slate-500">
+                Open a conversation to read the replies or continue the
+                discussion with our team.
+              </p>
+              <button
+                type="button"
+                onClick={openComposer}
+                className="mt-5 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+              >
+                <Plus size={16} />
+                New conversation
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 border-b border-slate-100 bg-white p-3.5 sm:p-4">
                 <button
                   type="button"
-                  onClick={goHome}
-                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                  onClick={closeThread}
+                  aria-label="Back to conversations"
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-[#071A52] lg:hidden"
                 >
-                  Cancel
+                  <ArrowLeft size={18} />
                 </button>
 
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123A8F]"
-                >
-                  <MessageCircle size={17} />
-                  Create conversation
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {/* CHAT THREAD */}
-        {view === 'thread' && activeConversation && (
-          <section className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#123A8F]">
-                    <CategoryIcon category={activeConversation.category} size={22} />
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-bold text-[#071A52]">
-                        {activeConversation.subject}
-                      </h2>
-
-                      {activeConversation.isDemo && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                          Sample
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      {activeConversation.reference} ·{' '}
-                      {getCategoryLabel(activeConversation.category)}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      Started {formatDate(activeConversation.createdAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <StatusBadge status={activeConversation.status} />
-              </div>
-            </div>
-
-            {activeConversation.isDemo && (
-              <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 sm:px-6">
-                <p className="text-xs leading-5 text-amber-800">
-                  This is a demonstration conversation. The messages shown are
-                  sample content, not a real exchange with ScholaNode Support.
-                </p>
-              </div>
-            )}
-
-            {notice && (
-              <div className="border-b border-sky-100 bg-sky-50 px-5 py-3 sm:px-6">
-                <p className="text-sm leading-5 text-sky-800">{notice}</p>
-              </div>
-            )}
-
-            <div className="space-y-5 bg-slate-50/70 p-4 sm:p-6">
-              <div className="flex justify-center">
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-400">
-                  Conversation started {formatDate(activeConversation.createdAt)}
-                </span>
-              </div>
-
-              {activeConversation.messages.map((message) => {
-                const isSchool = message.sender === 'school';
-
-                return (
-                  <div
-                    key={message.id}
-                    className={`flex ${isSchool ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[90%] sm:max-w-[78%] ${
-                        isSchool ? 'items-end' : 'items-start'
-                      } flex flex-col`}
-                    >
-                      <div className="mb-1.5 flex items-center gap-2 px-1">
-                        {!isSchool && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#071A52] text-white">
-                            <Headphones size={13} />
-                          </div>
-                        )}
-
-                        <span className="text-xs font-semibold text-slate-600">
-                          {message.senderName}
-                        </span>
-
-                        {isSchool && (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                            Your school
-                          </span>
-                        )}
-                      </div>
-
-                      <div
-                        className={`rounded-2xl px-4 py-3 ${
-                          isSchool
-                            ? 'rounded-tr-md bg-[#071A52] text-white'
-                            : 'rounded-tl-md border border-slate-200 bg-white text-slate-700 shadow-sm'
-                        }`}
-                      >
-                        {message.text && (
-                          <p className="whitespace-pre-wrap text-sm leading-6">
-                            {message.text}
-                          </p>
-                        )}
-
-                        {message.attachmentName && (
-                          <div
-                            className={`mt-3 flex items-center gap-2 rounded-xl p-2.5 text-xs ${
-                              isSchool ? 'bg-white/10' : 'bg-slate-50'
-                            }`}
-                          >
-                            <FileText size={17} />
-                            <span className="break-all">
-                              {message.attachmentName}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <span className="mt-1.5 px-1 text-[11px] text-slate-400">
-                        {formatDateTime(message.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {activeConversation.status === 'CLOSED' ? (
-              <div className="border-t border-slate-100 p-5 sm:p-6">
-                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-4">
-                  <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-slate-500" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-700">
-                      This conversation is closed
-                    </h3>
-                    <p className="mt-1 text-sm leading-5 text-slate-500">
-                      If you have a different issue, start a new conversation.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={startAnotherConversation}
-                      className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#123A8F] hover:text-sky-700"
-                    >
-                      <Plus size={16} />
-                      Start a new conversation
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <form
-                onSubmit={handleSendReply}
-                className="border-t border-slate-100 bg-white p-4 sm:p-6"
-              >
-                {activeConversation.status === 'RESOLVED' && (
-                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-800">
-                    <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
-                    <p className="leading-5">
-                      This conversation is marked resolved. Sending another
-                      message will reopen it in this demo.
-                    </p>
-                  </div>
-                )}
-
-                <label
-                  htmlFor="support-reply"
-                  className="mb-2 block text-sm font-bold text-[#071A52]"
-                >
-                  Add to this conversation
-                </label>
-
-                <textarea
-                  id="support-reply"
-                  ref={replyInputRef}
-                  value={reply}
-                  onChange={(event) => setReply(event.target.value)}
-                  rows={4}
-                  maxLength={5000}
-                  placeholder="Write your message here..."
-                  className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                <CategoryAvatar
+                  category={activeConversation.category}
+                  size="lg"
                 />
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,.pdf"
-                  onChange={(event) => handleFileChange(event, 'reply')}
-                  className="hidden"
-                />
-
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-sky-700"
-                    >
-                      <Paperclip size={17} />
-                      Attach file
-                    </button>
-
-                    {replyAttachment && (
-                      <span className="inline-flex max-w-full items-center gap-2 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs text-sky-800">
-                        <span className="max-w-40 truncate">{replyAttachment}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeAttachment('reply')}
-                          aria-label="Remove attachment"
-                        >
-                          <X size={14} />
-                        </button>
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-extrabold text-[#071A52]">
+                    {getCategoryLabel(activeConversation.category)}
+                  </h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <StatusBadge status={conversationStatus} />
+                    {formatSupportDay(activeConversation.createdAt) && (
+                      <span className="text-xs text-slate-400">
+                        Started {formatSupportDay(activeConversation.createdAt)}
                       </span>
                     )}
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={!reply.trim() && !replyAttachment}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Send size={16} />
-                    Send message
-                  </button>
                 </div>
 
-                <p className="mt-3 text-xs leading-5 text-slate-400">
-                  Demo mode: messages are saved in this browser only. They
-                  are not delivered to the ScholaNode team.
-                </p>
-              </form>
-            )}
-          </section>
-        )}
+                <button
+                  type="button"
+                  onClick={() => loadMessages({ page: 1 })}
+                  disabled={messagesLoading}
+                  aria-label="Refresh messages"
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-[#071A52] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={17}
+                    className={messagesLoading ? 'animate-spin' : ''}
+                  />
+                </button>
+              </div>
 
-        {/* Helpful footer */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-sky-700">
-              <BookOpen size={20} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#071A52]">
-                A little more information helps us help you
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Describe what happened, what you expected, and any steps
-                that led to the problem. Screenshots can also be useful.
-              </p>
-            </div>
-          </div>
+              <div
+                ref={messagesRef}
+                onScroll={handleMessagesScroll}
+                className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3.5 sm:p-5"
+              >
+                {messagesLoading && messages.length === 0 ? (
+                  <MessageSkeleton />
+                ) : messagesError && messages.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                      <AlertCircle size={22} />
+                    </div>
+                    <h3 className="mt-3 text-base font-bold text-slate-800">
+                      Unable to load this conversation
+                    </h3>
+                    <p className="mt-1 max-w-sm text-[13px] leading-5 text-slate-500">
+                      {messagesError}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => loadMessages({ page: 1 })}
+                      className="mt-4 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+                    >
+                      <RefreshCw size={15} />
+                      Try again
+                    </button>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#123A8F]">
+                      <MessagesSquare size={22} />
+                    </div>
+                    <h3 className="mt-3 text-base font-bold text-slate-800">
+                      No messages yet
+                    </h3>
+                    <p className="mt-1 max-w-sm text-[13px] leading-5 text-slate-500">
+                      Send the first message and our team will reply here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {hasMoreMessages && (
+                      <div className="pb-1 text-center">
+                        <button
+                          type="button"
+                          onClick={handleLoadEarlierMessages}
+                          disabled={messagesLoading}
+                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:text-[#123A8F] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {messagesLoading && (
+                            <Loader2 size={13} className="animate-spin" />
+                          )}
+                          Load earlier messages
+                        </button>
+                      </div>
+                    )}
 
-          <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-500">
-            <ShieldCheck size={16} className="text-emerald-600" />
-            Please keep your account details private.
-          </div>
-        </div>
+                    {messages.map((message, index) => {
+                      const fromSupport = message.isFromSupport;
+                      const previous = index > 0 ? messages[index - 1] : null;
+                      const showDay =
+                        !previous ||
+                        !isSameSupportDay(previous.createdAt, message.createdAt);
+
+                      return (
+                        <Fragment key={message.id}>
+                          {showDay && (
+                            <div className="flex justify-center py-2">
+                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
+                                {formatSupportDay(message.createdAt)}
+                              </span>
+                            </div>
+                          )}
+
+                          <div
+                            className={`flex ${
+                              fromSupport ? 'justify-start' : 'justify-end'
+                            }`}
+                          >
+                            <div
+                              className={`flex max-w-[88%] flex-col sm:max-w-[75%] ${
+                                fromSupport ? 'items-start' : 'items-end'
+                              }`}
+                            >
+                              {fromSupport && (
+                                <div className="mb-1 flex items-center gap-1.5 px-1">
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#071A52] text-white">
+                                    <Headphones size={12} />
+                                  </span>
+                                  <span className="text-xs font-semibold text-slate-600">
+                                    {message.senderName ||
+                                      'ScholaNode Support'}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div
+                                className={`space-y-2 px-3.5 py-2.5 text-sm leading-6 shadow-sm ${
+                                  fromSupport
+                                    ? 'rounded-2xl rounded-tl-md border border-slate-200 bg-white text-slate-700'
+                                    : 'rounded-2xl rounded-tr-md bg-[#071A52] text-white'
+                                }`}
+                              >
+                                {message.text && (
+                                  <p className="whitespace-pre-wrap break-words">
+                                    {message.text}
+                                  </p>
+                                )}
+                              </div>
+
+                              <span className="mt-1 px-1 text-xs text-slate-400">
+                                {formatSupportTime(message.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </Fragment>
+                      );
+                    })}
+
+                    {messagesError && (
+                      <p
+                        role="alert"
+                        className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-center text-[13px] text-rose-700"
+                      >
+                        {messagesError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 bg-white p-3 sm:p-4">
+                {canReply ? (
+                  <MessageComposer
+                    value={composerText}
+                    onChange={(value) => {
+                      setComposerText(value);
+                      if (sendError) setSendError('');
+                    }}
+                    onSubmit={handleSend}
+                    sending={sending}
+                    placeholder="Write your message..."
+                    error={sendError}
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    <div
+                      className={`flex flex-col gap-3 rounded-xl border p-3.5 sm:flex-row sm:items-center sm:justify-between ${
+                        conversationStatus === 'RESOLVED'
+                          ? 'border-emerald-200 bg-emerald-50'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        {conversationStatus === 'RESOLVED' ? (
+                          <CheckCircle2
+                            size={19}
+                            className="mt-0.5 shrink-0 text-emerald-700"
+                          />
+                        ) : (
+                          <MessageSquare
+                            size={19}
+                            className="mt-0.5 shrink-0 text-slate-500"
+                          />
+                        )}
+                        <div>
+                          <p
+                            className={`text-sm font-bold ${
+                              conversationStatus === 'RESOLVED'
+                                ? 'text-emerald-900'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {conversationStatus === 'RESOLVED'
+                              ? 'This conversation is resolved'
+                              : 'This conversation is closed'}
+                          </p>
+                          <p
+                            className={`mt-0.5 text-[13px] leading-5 ${
+                              conversationStatus === 'RESOLVED'
+                                ? 'text-emerald-800'
+                                : 'text-slate-500'
+                            }`}
+                          >
+                            {conversationStatus === 'RESOLVED'
+                              ? 'If you still need help, reopen it and continue the discussion.'
+                              : 'Reopen this conversation to continue, or start a new one for another issue.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleReopen}
+                        disabled={reopening}
+                        className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {reopening ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <RotateCcw size={15} />
+                        )}
+                        {reopening ? 'Reopening…' : 'Reopen'}
+                      </button>
+                    </div>
+
+                    {reopenError && (
+                      <p
+                        role="alert"
+                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] font-medium text-rose-700"
+                      >
+                        {reopenError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </section>
       </div>
-    </main>
+
+      {createOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeComposer();
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-support-conversation"
+            className="w-full max-w-lg overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
+                  New conversation
+                </p>
+                <h2
+                  id="new-support-conversation"
+                  className="mt-1 text-lg font-extrabold text-[#071A52]"
+                >
+                  Message ScholaNode Support
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeComposer}
+                disabled={creating}
+                aria-label="Close new conversation"
+                className="cursor-pointer rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <p className="mb-2 text-[13px] font-semibold text-slate-700">
+                  What do you need help with?
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {SUPPORT_CATEGORIES.map((category) => {
+                    const Icon = CATEGORY_ICONS[category.value];
+                    const active = draft.category === category.value;
+
+                    return (
+                      <button
+                        key={category.value}
+                        type="button"
+                        onClick={() => {
+                          setDraft((current) => ({
+                            ...current,
+                            category: category.value,
+                          }));
+                          if (createError) setCreateError('');
+                        }}
+                        disabled={creating}
+                        aria-pressed={active}
+                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          active
+                            ? 'border-[#0A2463] bg-blue-50 text-[#071A52] ring-2 ring-[#0A2463]/10'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50/40'
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        {category.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <MessageComposer
+                value={draft.message}
+                onChange={(value) => {
+                  setDraft((current) => ({ ...current, message: value }));
+                  if (createError) setCreateError('');
+                }}
+                onSubmit={handleCreate}
+                sending={creating}
+                placeholder="Describe what's happening..."
+                autoFocus
+                error={createError}
+                hint="Our team replies in this conversation. Please do not include passwords or card details."
+              />
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
   );
 }

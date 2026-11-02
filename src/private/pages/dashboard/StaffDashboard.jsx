@@ -16,7 +16,6 @@ import {
   ClipboardList,
   ChevronRight,
   Activity,
-  CalendarDays,
   DoorOpen,
   ShieldAlert,
   X,
@@ -54,16 +53,6 @@ const mockActivity = [
     description: "Main entrance · Awaiting review",
     time: "04:40 PM",
     status: "Needs review",
-  },
-];
-
-const mockVisitors = [
-  {
-    id: 1,
-    name: "Mr. Abdullahi",
-    purpose: "Parent meeting",
-    host: "School Administrator",
-    time: "04:48 PM",
   },
 ];
 
@@ -137,7 +126,6 @@ export default function SecurityDashboard() {
 
   // Demo values. Replace these with authenticated user and school data later.
   const [activity, setActivity] = useState(mockActivity);
-  const [visitors, setVisitors] = useState(mockVisitors);
   const [incidents, setIncidents] = useState([
     {
       id: 1,
@@ -156,15 +144,16 @@ export default function SecurityDashboard() {
   ]);
 
   const [visitorCount, setVisitorCount] = useState(3);
-  const [verifiedToday, setVerifiedToday] = useState(24);
+  const [verifiedToday] = useState(24);
 
   // Optional integration with the existing login storage.
-  let storedUser = {};
-  try {
-    storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    storedUser = {};
-  }
+  const storedUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}") || {};
+    } catch {
+      return {};
+    }
+  })();
 
   const officerName =
     storedUser.firstName || storedUser.name || "Security Officer";
@@ -190,7 +179,6 @@ export default function SecurityDashboard() {
       }),
     };
 
-    setVisitors((current) => [visitor, ...current]);
     setVisitorCount((current) => current + 1);
     setNotifications((current) => [
       {
@@ -253,23 +241,6 @@ export default function SecurityDashboard() {
     );
     setIncidentDescription("");
     setShowIncidentModal(false);
-  }
-
-  function markVisitorReceived(visitorId) {
-    const visitor = visitors.find((item) => item.id === visitorId);
-    if (!visitor) return;
-
-    setVisitors((current) =>
-      current.filter((item) => item.id !== visitorId)
-    );
-    setNotifications((current) =>
-      current.filter(
-        (item) => !item.description.includes(visitor.name)
-      )
-    );
-    setNotice(
-      `Demo: ${visitor.name} was marked as received by the host.`
-    );
   }
 
   function openVisitors() {
@@ -657,17 +628,6 @@ export default function SecurityDashboard() {
             })}
           </div>
         </section>
-
-        <footer className="flex flex-col gap-2 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <span className="inline-flex items-center gap-2">
-            <ShieldCheck size={15} />
-            ScholaNode Security
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <CalendarDays size={14} />
-            Demo overview · Connect live school data before production
-          </span>
-        </footer>
       </div>
 
       {/* Visitor registration demo modal */}

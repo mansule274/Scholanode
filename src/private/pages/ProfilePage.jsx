@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Camera,
@@ -12,27 +12,50 @@ import {
   ImagePlus,
   Info,
   KeyRound,
+  Loader2,
   LockKeyhole,
   Mail,
   MailCheck,
   Pencil,
+  RefreshCw,
   Save,
   ShieldCheck,
+  Upload,
   UserRound,
   X,
 } from 'lucide-react';
 
 import { useUserContext } from '../../context/UserContext';
+import { MEDIA_UPLOAD_STAGES, confirmMediaUpload, uploadMedia } from '../../services/media/mediaUploadService';
+import { COMPRESSION_PRESETS, compressImage } from '../../utils/media/compressImage';
 import {
+  PROFILE_IMAGE_MEDIA_RULES,
+  formatFileSize,
+  validateMediaFile,
+} from '../../utils/media/validateMedia';
+import {
+  canAccessSchoolSupport,
   getRoleLabel,
   normalizeRole,
   ROLES,
 } from '../../utils/roles';
 import {
+  confirmProfileImageUpload,
   requestEmailChange,
+  requestProfileImageUploadUrl,
   updateProfile,
   verifyEmailChange,
 } from './profileApi';
+
+function getProfileImage(user, student) {
+  return (
+    user?.profileImageUrl ||
+    user?.profileImage ||
+    student?.profileImageUrl ||
+    student?.profileImage ||
+    ''
+  );
+}
 
 function getDisplayName(user, student) {
   const name = [
@@ -87,6 +110,38 @@ const inputClass =
 
 const lockedInputClass =
   'w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-500';
+
+const UPLOAD_ACTIVE_STAGES = new Set([
+  MEDIA_UPLOAD_STAGES.PREPARING,
+  MEDIA_UPLOAD_STAGES.REQUESTING_URL,
+  MEDIA_UPLOAD_STAGES.UPLOADING,
+  MEDIA_UPLOAD_STAGES.CONFIRMING,
+]);
+
+const UPLOAD_STAGE_COPY = {
+  [MEDIA_UPLOAD_STAGES.PREPARING]: {
+    title: 'Preparing image…',
+    description: 'Optimising your photo for upload.',
+  },
+  [MEDIA_UPLOAD_STAGES.REQUESTING_URL]: {
+    title: 'Connecting to secure storage…',
+    description: 'Requesting a private upload link.',
+  },
+  [MEDIA_UPLOAD_STAGES.UPLOADING]: {
+    title: 'Uploading profile image…',
+    description: 'Sending your photo to private storage.',
+  },
+  [MEDIA_UPLOAD_STAGES.CONFIRMING]: {
+    title: 'Saving profile image…',
+    description: 'Linking your new photo to your account.',
+  },
+};
+
+const primaryUploadButtonClass =
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#071A52] shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60';
+
+const secondaryUploadButtonClass =
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/25 px-3.5 py-2.5 text-sm font-semibold text-white/90 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60';
 
 function SectionHeading({ icon: Icon, title, description }) {
   return (
@@ -186,9 +241,9 @@ export default function ProfilePage() {
 
   const normalizedRole = normalizeRole(user?.role || student?.role);
   const isStudent = normalizedRole === ROLES.STUDENT;
-  const isSchoolAdministrator = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR].includes(normalizedRole);
-  const helpPath = isSchoolAdministrator ? '/help-support' : '/complaints';
-  const helpDescription = isSchoolAdministrator
+  const canContactSupport = canAccessSchoolSupport(user);
+  const helpPath = canContactSupport ? '/help-support' : '/complaints';
+  const helpDescription = canContactSupport
     ? 'Contact ScholaNode support about your account.'
     : 'Contact your school office about this account, or raise a complaint.';
   const roleLabel =
@@ -217,11 +272,16 @@ export default function ProfilePage() {
     [user, student],
   );
 
-  const [profileImage, setProfileImage] = useState(
-    user?.profileImage || student?.profileImage || '',
+  const [profileImage, setProfileImage] = useState(() =>
+    getProfileImage(user, student),
   );
   const [form, setForm] = useState(initialProfile);
-  const [imageChanged, setImageChanged] = useState(false);
+
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [uploadStage, setUploadStage] = useState('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState(null);
+  const [pendingConfirmKey, setPendingConfirmKey] = useState('');
 
   const [profileMessage, setProfileMessage] = useState('');
   const [profileMessageType, setProfileMessageType] = useState('info');
@@ -238,11 +298,27 @@ export default function ProfilePage() {
   const [emailMessage, setEmailMessage] = useState('');
   const [emailMessageType, setEmailMessageType] = useState('info');
 
+  const uploadInProgress = UPLOAD_ACTIVE_STAGES.has(uploadStage);
+  const showUploadPanel = Boolean(
+    selectedImage ||
+      uploadError ||
+      uploadInProgress ||
+      uploadStage === MEDIA_UPLOAD_STAGES.COMPLETED,
+  );
+
+  useEffect(() => {
+    const previewUrl = selectedImage?.previewUrl;
+
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [selectedImage]);
+
   const nameChanged =
     form.firstName !== initialProfile.firstName ||
     form.surName !== initialProfile.surName;
 
-  const profileChanged = nameChanged || imageChanged;
+  const profileChanged = nameChanged;
 
   const normalizedOriginalEmail = originalEmail.toLowerCase();
   const normalizedNewEmail = newEmail.trim().toLowerCase();
@@ -256,40 +332,193 @@ export default function ProfilePage() {
     setProfileMessage('');
   };
 
-  const handleImageUpload = (event) => {
+  const openImagePicker = () => {
+    if (uploadInProgress) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleSelectImage = (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
-    if (!file) return;
+    if (!file || uploadInProgress) return;
 
-    if (!file.type.startsWith('image/')) {
-      setProfileMessageType('error');
-      setProfileMessage('Please choose a valid image file.');
+    const validation = validateMediaFile(file, PROFILE_IMAGE_MEDIA_RULES);
+
+    if (!validation.valid) {
+      setSelectedImage(null);
+      setUploadStage('idle');
+      setUploadProgress(0);
+      setPendingConfirmKey('');
+      setUploadError({ kind: 'select', message: validation.message });
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setProfileMessageType('error');
-      setProfileMessage('Your profile picture must be 5 MB or smaller.');
-      return;
+    setSelectedImage({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+      size: file.size,
+    });
+    setUploadError(null);
+    setUploadStage('idle');
+    setUploadProgress(0);
+    setPendingConfirmKey('');
+  };
+
+  const handleUploadConfirmed = (confirmation) => {
+    const serverUser = confirmation?.user;
+    const nextImage = serverUser?.profileImageUrl;
+
+    if (typeof nextImage === 'string' && nextImage) {
+      setProfileImage(nextImage);
     }
 
-    const reader = new FileReader();
+    if (serverUser) {
+      const nextUser = { ...(user || {}), ...serverUser };
+      // Temporary signed URLs stay in memory only; never persist them.
+      delete nextUser.profileImageUrl;
 
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setProfileImage(reader.result);
-        setImageChanged(true);
-        setProfileMessage('');
+      setUser(nextUser);
+
+      try {
+        localStorage.setItem(
+          'scholanode_user_cache',
+          JSON.stringify(nextUser, (key, value) =>
+            key === 'profileImageUrl' ? undefined : value,
+          ),
+        );
+      } catch {
+        // Storage unavailable or quota exceeded
       }
-    };
+    }
 
-    reader.onerror = () => {
-      setProfileMessageType('error');
-      setProfileMessage('We could not read this image. Please try another one.');
-    };
+    setSelectedImage(null);
+    setPendingConfirmKey('');
+    setUploadError(null);
+    setUploadProgress(100);
+    setUploadStage(MEDIA_UPLOAD_STAGES.COMPLETED);
+  };
 
-    reader.readAsDataURL(file);
+  const logUploadStage = (stage) => {
+    console.log('[profile] Image upload stage', stage);
+    setUploadStage(stage);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedImage || uploadInProgress) return;
+
+    console.log('[profile] Starting profile image upload', {
+      name: selectedImage.name,
+      size: selectedImage.size,
+    });
+
+    setUploadError(null);
+    setPendingConfirmKey('');
+    logUploadStage(MEDIA_UPLOAD_STAGES.PREPARING);
+    setUploadProgress(0);
+
+    let preparedFile;
+
+    try {
+      preparedFile = await compressImage(
+        selectedImage.file,
+        COMPRESSION_PRESETS.PROFILE_IMAGE,
+      );
+
+      const validation = validateMediaFile(
+        preparedFile,
+        PROFILE_IMAGE_MEDIA_RULES,
+      );
+
+      if (!validation.valid) {
+        throw new Error(validation.message);
+      }
+    } catch (error) {
+      setUploadStage('idle');
+      setUploadError({
+        kind: 'upload',
+        message:
+          error?.message ||
+          'We could not prepare that image. Please try another photo.',
+      });
+      return;
+    }
+
+    try {
+      const result = await uploadMedia({
+        file: preparedFile,
+        requestUploadUrl: requestProfileImageUploadUrl,
+        confirmUpload: confirmProfileImageUpload,
+        onStage: logUploadStage,
+        onProgress: setUploadProgress,
+      });
+
+      handleUploadConfirmed(result.confirmation);
+    } catch (error) {
+      setUploadStage('idle');
+
+      if (error?.phase === MEDIA_UPLOAD_STAGES.CONFIRMING && error?.key) {
+        setPendingConfirmKey(error.key);
+        setUploadError({ kind: 'confirm', message: error.message });
+        return;
+      }
+
+      setUploadError({
+        kind: 'upload',
+        message:
+          error?.message || 'We could not upload your photo. Please try again.',
+      });
+    }
+  };
+
+  const handleRetryConfirmation = async () => {
+    if (!pendingConfirmKey || uploadInProgress) return;
+
+    setUploadError(null);
+    logUploadStage(MEDIA_UPLOAD_STAGES.CONFIRMING);
+    setUploadProgress(100);
+
+    try {
+      const result = await confirmMediaUpload({
+        key: pendingConfirmKey,
+        confirmUpload: confirmProfileImageUpload,
+        onStage: logUploadStage,
+      });
+
+      handleUploadConfirmed(result.confirmation);
+    } catch (error) {
+      setUploadStage('idle');
+
+      if (error?.phase === MEDIA_UPLOAD_STAGES.CONFIRMING && error?.key) {
+        setPendingConfirmKey(error.key);
+      }
+
+      setUploadError({
+        kind: 'confirm',
+        message:
+          error?.message ||
+          'Your photo uploaded, but we could not save it to your profile. Please try again.',
+      });
+    }
+  };
+
+  const handleCancelUpload = () => {
+    if (uploadInProgress) return;
+
+    setSelectedImage(null);
+    setUploadError(null);
+    setPendingConfirmKey('');
+    setUploadProgress(0);
+    setUploadStage('idle');
+  };
+
+  const handleDismissUpload = () => {
+    if (uploadInProgress) return;
+
+    setUploadError(null);
+    setUploadProgress(0);
+    setUploadStage('idle');
   };
 
   const applyServerUser = (serverUser) => {
@@ -345,8 +574,6 @@ export default function ProfilePage() {
 
   const resetProfileChanges = () => {
     setForm(initialProfile);
-    setProfileImage(user?.profileImage || student?.profileImage || '');
-    setImageChanged(false);
     setProfileMessage('');
   };
 
@@ -528,8 +755,9 @@ export default function ProfilePage() {
 
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-white text-[#071A52] shadow-lg transition hover:scale-105"
+                onClick={openImagePicker}
+                disabled={uploadInProgress}
+                className="absolute -bottom-2 -right-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/40 bg-white text-[#071A52] shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
                 aria-label="Change profile picture"
                 title="Change profile picture"
               >
@@ -539,9 +767,10 @@ export default function ProfilePage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
+                accept="image/png,image/jpeg,image/webp"
                 className="hidden"
-                onChange={handleImageUpload}
+                disabled={uploadInProgress}
+                onChange={handleSelectImage}
               />
             </div>
 
@@ -581,14 +810,220 @@ export default function ProfilePage() {
               <ImagePlus size={15} />
               Profile photo
             </div>
-            <p className="text-xs text-blue-200">
-              PNG, JPG or WebP · Max 5 MB
-            </p>
-            <p className="text-xs text-amber-200">
-              Preview only · uploads coming soon
+            <p className="flex items-center gap-1.5 text-xs text-blue-200 sm:justify-end">
+              <LockKeyhole size={13} />
+              Stored privately on your account
             </p>
           </div>
         </div>
+
+        {showUploadPanel && (
+          <div
+            className="relative mt-5 rounded-2xl border border-white/15 bg-white/[0.08] p-4 backdrop-blur-sm"
+            aria-busy={uploadInProgress}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              {selectedImage && (
+                <img
+                  src={selectedImage.previewUrl}
+                  alt="Selected profile photo preview"
+                  className="h-16 w-16 shrink-0 rounded-xl border border-white/25 object-cover"
+                />
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0" aria-live="polite">
+                    {uploadError ? (
+                      <div role="alert">
+                        <p className="flex items-center gap-2 text-sm font-bold text-white">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-400/20 text-red-200">
+                            <X size={13} />
+                          </span>
+                          {uploadError.kind === 'confirm'
+                            ? 'Photo uploaded, not saved yet'
+                            : uploadError.kind === 'select'
+                              ? "That photo can't be used"
+                              : 'Upload did not finish'}
+                        </p>
+                        <p className="mt-1.5 text-[13px] leading-5 text-blue-100">
+                          {uploadError.message}
+                        </p>
+                      </div>
+                    ) : uploadInProgress ? (
+                      <div className="flex items-center gap-2.5">
+                        <Loader2
+                          size={17}
+                          className="shrink-0 animate-spin text-cyan-300"
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            {UPLOAD_STAGE_COPY[uploadStage]?.title}
+                          </p>
+                          <p className="mt-0.5 text-[13px] leading-5 text-blue-200">
+                            {UPLOAD_STAGE_COPY[uploadStage]?.description}
+                          </p>
+                        </div>
+                      </div>
+                    ) : uploadStage === MEDIA_UPLOAD_STAGES.COMPLETED ? (
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-200">
+                          <CheckCircle2 size={16} />
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            Profile image updated successfully!
+                          </p>
+                          <p className="mt-0.5 text-[13px] leading-5 text-blue-200">
+                            Your new photo is now visible on your account.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm font-bold text-white">
+                          New photo ready to upload
+                        </p>
+                        <p className="mt-0.5 truncate text-[13px] leading-5 text-blue-200">
+                          {selectedImage?.name} ·{' '}
+                          {formatFileSize(selectedImage?.size)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {!uploadInProgress && (
+                    <button
+                      type="button"
+                      onClick={
+                        uploadStage === MEDIA_UPLOAD_STAGES.COMPLETED
+                          ? handleDismissUpload
+                          : handleCancelUpload
+                      }
+                      className="shrink-0 cursor-pointer rounded-lg p-1.5 text-blue-200 transition hover:bg-white/10 hover:text-white"
+                      aria-label={
+                        uploadStage === MEDIA_UPLOAD_STAGES.COMPLETED
+                          ? 'Dismiss upload status'
+                          : uploadError?.kind === 'confirm'
+                            ? 'Discard uploaded photo'
+                            : 'Cancel photo selection'
+                      }
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {uploadStage === MEDIA_UPLOAD_STAGES.UPLOADING && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.08em] text-blue-200">
+                      <span>Uploading to secure storage</span>
+                      {typeof uploadProgress === 'number' && (
+                        <span>{uploadProgress}%</span>
+                      )}
+                    </div>
+
+                    <div
+                      role="progressbar"
+                      aria-label="Profile image upload progress"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={
+                        typeof uploadProgress === 'number'
+                          ? uploadProgress
+                          : undefined
+                      }
+                      className="h-2 overflow-hidden rounded-full bg-white/15"
+                    >
+                      {typeof uploadProgress === 'number' ? (
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#22d3ee] via-[#0EA5E9] to-[#38bdf8] shadow-[0_0_12px_rgba(34,211,238,0.55)] transition-[width] duration-300 ease-out"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      ) : (
+                        <div className="h-full w-2/5 animate-pulse rounded-full bg-gradient-to-r from-[#22d3ee] to-[#38bdf8]" />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!uploadInProgress && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {uploadError ? (
+                      <>
+                        {uploadError.kind === 'select' ? (
+                          <button
+                            type="button"
+                            onClick={openImagePicker}
+                            className={primaryUploadButtonClass}
+                          >
+                            <Camera size={15} />
+                            Choose another photo
+                          </button>
+                        ) : uploadError.kind === 'confirm' ? (
+                          <button
+                            type="button"
+                            onClick={handleRetryConfirmation}
+                            className={primaryUploadButtonClass}
+                          >
+                            <RefreshCw size={15} />
+                            Retry saving
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleUpload}
+                            className={primaryUploadButtonClass}
+                          >
+                            <RefreshCw size={15} />
+                            Try again
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleCancelUpload}
+                          className={secondaryUploadButtonClass}
+                        >
+                          {uploadError.kind === 'confirm'
+                            ? 'Discard photo'
+                            : 'Cancel'}
+                        </button>
+                      </>
+                    ) : uploadStage === MEDIA_UPLOAD_STAGES.COMPLETED ? (
+                      <button
+                        type="button"
+                        onClick={handleDismissUpload}
+                        className={secondaryUploadButtonClass}
+                      >
+                        Done
+                      </button>
+                    ) : selectedImage ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleUpload}
+                          className={primaryUploadButtonClass}
+                        >
+                          <Upload size={15} />
+                          Upload photo
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCancelUpload}
+                          className={secondaryUploadButtonClass}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
