@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { useUserContext } from '../../../context/UserContext';
 import { canAccessSchoolSupport } from '../../../utils/roles';
 import OwnerSetupPanel from './OwnerSetupPanel';
+import { getGreeting } from './dashboardGreeting';
 
 const quickLinks = [
   ['Students', Users, '/students'],
@@ -24,15 +25,6 @@ const quickLinks = [
   ['Sessions & terms', CalendarDays, '/sessions-terms'],
   ['Results', ClipboardList, '/results'],
 ];
-
-function getGreeting() {
-  const hour = new Date().getHours();
-
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-
-  return 'Good evening';
-}
 
 export default function AdministrativeDashboard() {
   const { user, school } = useUserContext();

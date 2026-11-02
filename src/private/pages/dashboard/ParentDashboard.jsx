@@ -28,6 +28,8 @@ import {
   titleCase,
 } from "../parent/childDisplay";
 import ChildStatusBadge from "../parent/ChildStatusBadge";
+import { getGreeting } from "./dashboardGreeting";
+import SchoolComplaintCard from "./SchoolComplaintCard";
 
 function getAttendanceSummary(attendance) {
   const presentDays = Number(attendance?.presentDays) || 0;
@@ -459,7 +461,7 @@ export default function ParentDashboard() {
                 Parent portal
               </div>
               <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
-                Welcome back, {parentName}
+                {getGreeting()}, {parentName}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-blue-100">
                 <span className="inline-flex items-center gap-1.5">
@@ -586,6 +588,8 @@ export default function ParentDashboard() {
             </div>
           )}
         </section>
+
+        <SchoolComplaintCard schoolName={schoolName} />
       </div>
 
       {selectedChild && (

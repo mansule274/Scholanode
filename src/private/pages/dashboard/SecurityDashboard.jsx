@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useUserContext } from "../../../context/UserContext";
 import { getSecurityDashboard } from "../attendance/gateScannerApi";
+import { getGreeting } from "./dashboardGreeting";
+import SchoolComplaintCard from "./SchoolComplaintCard";
 
 const todayLabel = new Date().toLocaleDateString([], {
   weekday: "long",
@@ -83,7 +85,7 @@ export default function SecurityDashboard() {
             Gate security
           </div>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071A52] sm:text-3xl">
-            Welcome, {officerName}
+            {getGreeting()}, {officerName}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
             <span>{schoolName}</span>
@@ -219,6 +221,8 @@ export default function SecurityDashboard() {
           verification records student arrivals. It does not replace the class
           teacher's attendance register.
         </p>
+
+        <SchoolComplaintCard schoolName={schoolName} />
       </div>
     </div>
   );

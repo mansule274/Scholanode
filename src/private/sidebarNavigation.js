@@ -101,7 +101,7 @@ const navigation = [
         label: 'Complaints',
         icon: AlertCircle,
         path: '/complaints',
-        allowedRoles: [ROLES.STAFF, ROLES.EXAM_OFFICER, ROLES.PARENT, ROLES.ADMINISTRATOR],
+        allowedRoles: [ROLES.STAFF, ROLES.EXAM_OFFICER, ROLES.PARENT, ROLES.SECURITY, ROLES.ADMINISTRATOR],
       },
       {
         label: 'School Inquiries',

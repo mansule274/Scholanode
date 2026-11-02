@@ -20,6 +20,8 @@ import {
   ShieldAlert,
   X,
 } from "lucide-react";
+import { getGreeting } from "./dashboardGreeting";
+import SchoolComplaintCard from "./SchoolComplaintCard";
 
 const mockActivity = [
   {
@@ -260,7 +262,7 @@ export default function SecurityDashboard() {
               </div>
 
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                Welcome, {officerName}
+                {getGreeting()}, {officerName}
               </h1>
 
               <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
@@ -628,6 +630,8 @@ export default function SecurityDashboard() {
             })}
           </div>
         </section>
+
+        <SchoolComplaintCard schoolName={schoolName} />
       </div>
 
       {/* Visitor registration demo modal */}

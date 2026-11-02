@@ -15,6 +15,8 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 
 import { useUserContext } from '../../../context/UserContext';
+import { getGreeting } from './dashboardGreeting';
+import SchoolComplaintCard from './SchoolComplaintCard';
 
 function SummaryCard({ title, value, description, icon: Icon, to }) {
   return (
@@ -131,7 +133,7 @@ const attendancePercentage = 92;
 
             <div className="min-w-0 flex-1">
               <h1 className="text-xl font-bold sm:text-2xl">
-                Welcome back, {displayName}!
+                {getGreeting()}, {displayName}
               </h1>
 
               <p className="mt-2 text-sm text-blue-100">
@@ -386,6 +388,8 @@ const attendancePercentage = 92;
             </div>
           </div>
         </section>
+
+        <SchoolComplaintCard schoolName={schoolName} />
       </div>
     </div>
   );
