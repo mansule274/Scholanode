@@ -7,6 +7,13 @@ export const PROFILE_IMAGE_MEDIA_RULES = Object.freeze({
   typeLabel: 'JPG, PNG or WebP image',
 });
 
+export const SCHOOL_LOGO_MEDIA_RULES = Object.freeze({
+  allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+  maxSizeBytes: DEFAULT_MAX_SIZE_BYTES,
+  typeLabel: 'JPG, PNG or WebP image',
+});
+
 export function formatFileSize(bytes) {
   const size = Number(bytes);
 
