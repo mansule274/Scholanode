@@ -46,8 +46,7 @@ export default function AnnouncementsPage() {
   const canManage = MANAGEMENT_ROLES.includes(role);
   const audienceForRole = getAudienceForRole(role);
 
-  const [view, setView] = useState(null);
-  const activeView = view ?? (canManage ? 'manage' : 'feed');
+  const activeView = canManage ? 'manage' : 'feed';
 
   const [announcements, setAnnouncements] = useState([]);
   const [pagination, setPagination] = useState({
@@ -133,17 +132,6 @@ export default function AnnouncementsPage() {
     };
   }, [activeView, page, debouncedSearch, audienceFilter, refreshKey]);
 
-  function switchView(nextView) {
-    if (nextView === activeView) return;
-
-    setView(nextView);
-    setPage(1);
-    setSearch('');
-    setDebouncedSearch('');
-    setAudienceFilter('ALL');
-    setLoadError('');
-  }
-
   function openComposer() {
     setDraft(EMPTY_DRAFT);
     setCreateError('');
@@ -189,7 +177,6 @@ export default function AnnouncementsPage() {
       setComposerOpen(false);
       setDraft(EMPTY_DRAFT);
       setNotice(response?.message || 'Announcement created successfully.');
-      setView('manage');
       setPage(1);
       setSearch('');
       setDebouncedSearch('');
@@ -297,34 +284,6 @@ export default function AnnouncementsPage() {
           )}
         </div>
 
-        {canManage && (
-          <div className="relative mt-5 inline-flex rounded-xl border border-white/15 bg-white/10 p-1">
-            <button
-              type="button"
-              onClick={() => switchView('manage')}
-              aria-pressed={activeView === 'manage'}
-              className={`cursor-pointer rounded-lg px-3.5 py-2 text-[13px] font-bold transition ${
-                activeView === 'manage'
-                  ? 'bg-white text-[#071A52]'
-                  : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              Manage
-            </button>
-            <button
-              type="button"
-              onClick={() => switchView('feed')}
-              aria-pressed={activeView === 'feed'}
-              className={`cursor-pointer rounded-lg px-3.5 py-2 text-[13px] font-bold transition ${
-                activeView === 'feed'
-                  ? 'bg-white text-[#071A52]'
-                  : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              My feed
-            </button>
-          </div>
-        )}
       </section>
 
       {notice && (
