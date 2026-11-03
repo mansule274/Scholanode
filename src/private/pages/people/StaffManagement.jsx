@@ -120,7 +120,7 @@ export default function StaffManagement() {
     return staff.filter((member) => {
       const matchesSearch =
         !query ||
-        `${member.firstName} ${member.lastName} ${member.loginId} ${member.email} ${member.role}`
+        `${getStaffDisplayName(member)} ${member.profilePending ? PENDING_PROFILE_LABEL : ''} ${member.loginId} ${member.email} ${member.role}`
           .toLowerCase()
           .includes(query);
 
@@ -159,8 +159,8 @@ export default function StaffManagement() {
     setModalError('');
     setModalMessage('');
     setForm({
-      firstName: member.firstName,
-      lastName: member.lastName,
+      firstName: member.profilePending ? '' : member.firstName,
+      lastName: member.profilePending ? '' : member.lastName,
       email: member.email,
       phone: member.phone || '',
       role: member.role,
@@ -189,8 +189,20 @@ export default function StaffManagement() {
     if (modal.type === 'edit') {
       const firstName = form.firstName.trim();
       const lastName = form.lastName.trim();
+      const profilePending = Boolean(modal.member.profilePending);
+      const hasTypedName = Boolean(firstName || lastName);
 
-      if (!firstName || !lastName || !form.email.trim() || !form.role) {
+      if (!form.email.trim() || !form.role) {
+        setModalError('Enter an email address and select a role before saving.');
+        return;
+      }
+
+      if (hasTypedName && (!firstName || !lastName)) {
+        setModalError('Enter both the first name and last name, or leave both blank.');
+        return;
+      }
+
+      if (!profilePending && (!firstName || !lastName)) {
         setModalError('Complete all required staff details before saving.');
         return;
       }
@@ -205,8 +217,7 @@ export default function StaffManagement() {
       setModalMessage('');
       try {
         const response = await updateStaff(modal.member.id, {
-          firstName,
-          surName: lastName,
+          ...(firstName && lastName ? { firstName, surName: lastName } : {}),
           email: form.email.trim(),
           phoneNumber: form.phone?.trim() || '',
           role: form.role,
@@ -822,12 +833,16 @@ function StaffRow({
           <Avatar member={member} />
 
           <div>
-            <p className="font-bold text-[#071A52]">
-              {member.firstName} {member.lastName}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-bold text-[#071A52]">
+                {getStaffDisplayName(member)}
+              </p>
+
+              {member.profilePending && <ProfilePendingBadge />}
+            </div>
 
             <p className="mt-1 text-xs text-slate-400">
-              {member.email}
+              {member.profilePending ? 'Name not added yet' : member.email}
             </p>
           </div>
         </div>
@@ -921,12 +936,16 @@ function MobileStaffCard({
           <Avatar member={member} />
 
           <div>
-            <h3 className="font-extrabold text-[#071A52]">
-              {member.firstName} {member.lastName}
-            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-extrabold text-[#071A52]">
+                {getStaffDisplayName(member)}
+              </h3>
+
+              {member.profilePending && <ProfilePendingBadge />}
+            </div>
 
             <p className="mt-1 text-xs text-slate-400">
-              {member.email}
+              {member.profilePending ? 'Name not added yet' : member.email}
             </p>
           </div>
         </div>
@@ -1093,7 +1112,7 @@ function StaffModal({
             </p>
 
             <p className="mt-1 font-bold text-[#071A52]">
-              {member.firstName} {member.lastName}
+              {getStaffDisplayName(member)}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -1148,14 +1167,21 @@ function StaffModal({
 
           <div>
             <h3 className="text-xl font-extrabold text-[#071A52]">
-              {member.firstName} {member.lastName}
+              {getStaffDisplayName(member)}
             </h3>
 
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <RoleBadge role={member.role} />
+              {member.profilePending && <ProfilePendingBadge />}
             </div>
           </div>
         </div>
+
+        {member.profilePending && (
+          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+            This staff member has not completed their profile yet. Their name will appear once they sign in and update their details.
+          </p>
+        )}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <DetailItem
@@ -1286,6 +1312,22 @@ function StaffModal({
           </>
         ) : (
           <>
+            {modal.member.profilePending && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <AlertCircle size={19} className="mt-0.5 shrink-0 text-amber-600" />
+
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    Profile not completed yet
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-amber-800">
+                    This staff member has not added their real name. Enter it below, or leave both name fields blank to keep the account marked as pending.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="First name"
@@ -1297,7 +1339,7 @@ function StaffModal({
                   }))
                 }
                 placeholder="e.g. Aisha"
-                required
+                required={!modal.member.profilePending}
               />
 
               <Field
@@ -1310,7 +1352,7 @@ function StaffModal({
                   }))
                 }
                 placeholder="e.g. Ibrahim"
-                required
+                required={!modal.member.profilePending}
               />
             </div>
 
@@ -1713,14 +1755,25 @@ function ModalShell({ children, onClose }) {
 ========================================================= */
 
 function Avatar({ member, large = false }) {
+  const sizeClass = large ? 'h-16 w-16 text-xl' : 'h-11 w-11 text-sm';
+
+  if (member.profilePending) {
+    return (
+      <div
+        className={`flex shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 ${sizeClass}`}
+        aria-hidden="true"
+      >
+        <UserRound size={large ? 28 : 20} />
+      </div>
+    );
+  }
+
   const initials =
     `${member.firstName?.[0] || ''}${member.lastName?.[0] || ''}`.toUpperCase();
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-2xl bg-[#071A52] font-extrabold text-white ${
-        large ? 'h-16 w-16 text-xl' : 'h-11 w-11 text-sm'
-      }`}
+      className={`flex shrink-0 items-center justify-center rounded-2xl bg-[#071A52] font-extrabold text-white ${sizeClass}`}
     >
       {initials}
     </div>
@@ -1776,6 +1829,15 @@ function RoleBadge({ role }) {
   return (
     <span className="inline-flex rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-[#071A52]">
       {formatRole(role)}
+    </span>
+  );
+}
+
+function ProfilePendingBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      {PENDING_PROFILE_LABEL}
     </span>
   );
 }
@@ -1935,7 +1997,7 @@ function DeactivateStaffModal({ member, saving, error, onCancel, onConfirm }) {
         </div>
         <h2 id="deactivate-staff-title" className="mt-5 text-2xl font-extrabold text-[#071A52]">Deactivate staff account?</h2>
         <p id="deactivate-staff-description" className="mt-2 text-sm leading-6 text-slate-600">
-          You are about to deactivate <span className="font-bold text-[#071A52]">{member.firstName} {member.lastName}</span>{member.loginId ? ` (${member.loginId})` : ''}. This will change their account status and may prevent them from accessing the school portal.
+          You are about to deactivate <span className="font-bold text-[#071A52]">{getStaffDisplayName(member)}</span>{member.loginId ? ` (${member.loginId})` : ''}. This will change their account status and may prevent them from accessing the school portal.
         </p>
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-5 text-amber-800">
           Continue only if you intend to disable this staff account. You can reactivate it later.
@@ -1965,6 +2027,23 @@ const filterClass =
 
 const secondaryButton =
   'rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50';
+
+const PENDING_PROFILE_LABEL = 'Profile pending';
+
+function getStaffDisplayName(member) {
+  if (!member) return '';
+
+  if (member.profilePending) {
+    return member.email || 'Invited staff';
+  }
+
+  const fullName = [member.firstName, member.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return fullName || member.email || 'Unnamed staff';
+}
 
 const menuItem =
   'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50';
@@ -2138,5 +2217,6 @@ function normalizeStaff(response) {
     dateJoined: member.dateJoined ?? member.createdAt ?? '',
     role: member.role === 'VICE' ? 'VICE_LEADER' : member.role ?? '',
     status: member.status ?? 'INACTIVE',
+    profilePending: member.profilePending === true,
   }));
 }
