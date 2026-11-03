@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import logoMark from './assets/vite.svg';
+import NotificationProvider from './context/NotificationProvider';
 import { useUserContext } from './context/UserContext';
 import { canAccessSchoolSupport } from './utils/roles';
 
@@ -36,6 +37,7 @@ import ChildProfilePage from './private/pages/parent/ChildProfilePage';
 import ChildResultsPage from './private/pages/parent/ChildResultsPage';
 import AnnouncementsPage from './private/pages/announcements/AnnouncementsPage';
 import ComplaintsPage from './private/pages/complaints/ComplaintsPage';
+import NotificationsPage from './private/pages/notifications/NotificationsPage';
 import StudentManagement from './private/pages/people/StudentManagement';
 import StaffManagement from './private/pages/people/StaffManagement';
 import ParentManagement from './private/pages/people/ParentManagement';
@@ -157,7 +159,7 @@ function PrivateRoutes() {
 
       {/* Operations & support */}
       <Route path="/messages" element={<RequireAdministrator><PrivateAppShell pageTitle="Messages"><PlaceholderPage title="Messages" description="Internal staff communication will appear here." /></PrivateAppShell></RequireAdministrator>} />
-      <Route path="/notifications" element={<PrivateAppShell pageTitle="Notifications"><PlaceholderPage title="Notifications" description="Notifications and inbox alerts will appear here." /></PrivateAppShell>} />
+      <Route path="/notifications" element={<PrivateAppShell pageTitle="Notifications"><NotificationsPage /></PrivateAppShell>} />
       <Route path="/timetable" element={<PrivateAppShell pageTitle="Timetable"><Timetable /></PrivateAppShell>} />
       <Route path="/help-support" element={<HelpSupportRoute />} />
       <Route path="/school-inquiries" element={<RequireAdministrator><PrivateAppShell pageTitle="School Inquiries"><SchoolInquiries /></PrivateAppShell></RequireAdministrator>} />
@@ -190,7 +192,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-50 text-slate-800">
-        {isAuthenticated ? <PrivateRoutes /> : <PublicRoutes />}
+        {isAuthenticated ? (
+          <NotificationProvider>
+            <PrivateRoutes />
+          </NotificationProvider>
+        ) : (
+          <PublicRoutes />
+        )}
       </div>
     </BrowserRouter>
   );

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import {
-  Bell,
   ChevronDown,
   LayoutDashboard,
   Loader2,
@@ -14,6 +13,7 @@ import {
 import { useUserContext } from '../context/UserContext';
 import { getRoleLabel, normalizeRole, ROLES } from '../utils/roles';
 import { getSidebarSectionsForUser } from './sidebarNavigation';
+import NotificationBell from './components/NotificationBell';
 import PrivateFooter from './components/PrivateFooter';
 
 const sectionToneClasses = {
@@ -269,14 +269,7 @@ export default function PrivateAppShell({ children, pageTitle = 'Dashboard' }) {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <Link
-                to="/notifications"
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-[#071A52]"
-                aria-label="Notifications"
-              >
-                <Bell size={18} />
-                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-red-500" />
-              </Link>
+              <NotificationBell />
 
               <div className="relative" ref={accountMenuRef}>
                 <button
