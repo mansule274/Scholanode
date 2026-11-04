@@ -22,11 +22,11 @@ import {
   avatarPalettes,
   getClassName,
   getDisplayName,
-  getInitials,
   getPeriodLabel,
   getRelationshipLabel,
   titleCase,
 } from "../parent/childDisplay";
+import ChildAvatar from "../parent/ChildAvatar";
 import ChildStatusBadge from "../parent/ChildStatusBadge";
 import { getGreeting } from "./dashboardGreeting";
 import SchoolComplaintCard from "./SchoolComplaintCard";
@@ -199,11 +199,10 @@ function ChildCard({
 
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start gap-3">
-          <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${palette} text-base font-black text-white shadow-sm`}
-          >
-            {getInitials(child)}
-          </div>
+          <ChildAvatar
+            child={child}
+            className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${palette} text-base text-white shadow-sm`}
+          />
 
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-bold text-[#071A52]">
@@ -295,9 +294,10 @@ function ChildQrModal({ child, onClose }) {
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0A2463] text-xs font-black text-white">
-              {getInitials(child)}
-            </div>
+            <ChildAvatar
+              child={child}
+              className="h-10 w-10 rounded-xl bg-[#0A2463] text-xs text-white"
+            />
             <div className="min-w-0">
               <h2 className="truncate text-base font-extrabold text-[#071A52]">
                 {getDisplayName(child)}

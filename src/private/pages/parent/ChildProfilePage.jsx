@@ -1,33 +1,54 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
   BellOff,
   BellRing,
+  Camera,
   Check,
   Eye,
   EyeOff,
   GraduationCap,
   Hash,
+  ImagePlus,
   Info,
   KeyRound,
+  Loader2,
   Mail,
   MailCheck,
   Pencil,
+  RefreshCw,
+  Upload,
   UserRound,
   Users,
   X,
 } from "lucide-react";
 import ChildPageLayout from "./ChildPageLayout";
 import ChildStatusBadge from "./ChildStatusBadge";
+import ChildAvatar from "./ChildAvatar";
 import {
   requestChildEmailChange,
   verifyChildEmailChange,
+  requestChildProfileImageUploadUrl,
+  confirmChildProfileImageUpload,
 } from "../people/parentApi";
+import {
+  MEDIA_UPLOAD_STAGES,
+  confirmMediaUpload,
+  uploadMedia,
+} from "../../../services/media/mediaUploadService";
+import {
+  COMPRESSION_PRESETS,
+  compressImage,
+} from "../../../utils/media/compressImage";
+import {
+  PROFILE_IMAGE_MEDIA_RULES,
+  formatFileSize,
+  validateMediaFile,
+} from "../../../utils/media/validateMedia";
 import {
   getClassName,
   getDisplayName,
-  getInitials,
   getRelationshipLabel,
   titleCase,
 } from "./childDisplay";
@@ -36,6 +57,32 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-100";
+
+const UPLOAD_ACTIVE_STAGES = new Set([
+  MEDIA_UPLOAD_STAGES.PREPARING,
+  MEDIA_UPLOAD_STAGES.REQUESTING_URL,
+  MEDIA_UPLOAD_STAGES.UPLOADING,
+  MEDIA_UPLOAD_STAGES.CONFIRMING,
+]);
+
+const UPLOAD_STAGE_COPY = {
+  [MEDIA_UPLOAD_STAGES.PREPARING]: {
+    title: "Preparing image…",
+    description: "Optimising the photo for upload.",
+  },
+  [MEDIA_UPLOAD_STAGES.REQUESTING_URL]: {
+    title: "Connecting to secure storage…",
+    description: "Requesting a private upload link.",
+  },
+  [MEDIA_UPLOAD_STAGES.UPLOADING]: {
+    title: "Uploading photo…",
+    description: "Sending the photo to private storage.",
+  },
+  [MEDIA_UPLOAD_STAGES.CONFIRMING]: {
+    title: "Saving photo…",
+    description: "Linking the new photo to this student.",
+  },
+};
 
 function DetailField({ label, value, mono = false }) {
   return (
@@ -432,7 +479,438 @@ function ChildEmailCard({ childId, email, onEmailChange }) {
   );
 }
 
-function ChildProfileBody({ child }) {
+function ChildPhotoCard({ child, onPhotoChange }) {
+  const fileInputRef = useRef(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [uploadStage, setUploadStage] = useState("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState(null);
+  const [pendingConfirmKey, setPendingConfirmKey] = useState("");
+
+  const uploadInProgress = UPLOAD_ACTIVE_STAGES.has(uploadStage);
+
+  const requestUploadUrl = (payload) =>
+    requestChildProfileImageUploadUrl(child.id, payload);
+
+  const confirmUpload = (payload) =>
+    confirmChildProfileImageUpload(child.id, payload);
+
+  useEffect(() => {
+    const previewUrl = selectedImage?.previewUrl;
+
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [selectedImage]);
+
+  const openImagePicker = () => {
+    if (uploadInProgress) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleSelectImage = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file || uploadInProgress) return;
+
+    const validation = validateMediaFile(file, PROFILE_IMAGE_MEDIA_RULES);
+
+    if (!validation.valid) {
+      setSelectedImage(null);
+      setUploadStage("idle");
+      setUploadProgress(0);
+      setPendingConfirmKey("");
+      setUploadError({ kind: "select", message: validation.message });
+      return;
+    }
+
+    setSelectedImage({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+      size: file.size,
+    });
+    setUploadError(null);
+    setUploadStage("idle");
+    setUploadProgress(0);
+    setPendingConfirmKey("");
+  };
+
+  const handleUploadConfirmed = (confirmation) => {
+    const nextImage = confirmation?.data?.profileImageUrl;
+
+    if (typeof nextImage === "string" && nextImage) {
+      onPhotoChange(nextImage);
+    }
+
+    setSelectedImage(null);
+    setPendingConfirmKey("");
+    setUploadError(null);
+    setUploadProgress(100);
+    setUploadStage(MEDIA_UPLOAD_STAGES.COMPLETED);
+  };
+
+  const logUploadStage = (stage) => {
+    console.log("[child] Profile image upload stage", stage);
+    setUploadStage(stage);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedImage || uploadInProgress) return;
+
+    setUploadError(null);
+    setPendingConfirmKey("");
+    logUploadStage(MEDIA_UPLOAD_STAGES.PREPARING);
+    setUploadProgress(0);
+
+    let preparedFile;
+
+    try {
+      preparedFile = await compressImage(
+        selectedImage.file,
+        COMPRESSION_PRESETS.PROFILE_IMAGE
+      );
+
+      const validation = validateMediaFile(
+        preparedFile,
+        PROFILE_IMAGE_MEDIA_RULES
+      );
+
+      if (!validation.valid) {
+        throw new Error(validation.message);
+      }
+    } catch (error) {
+      setUploadStage("idle");
+      setUploadError({
+        kind: "upload",
+        message:
+          error?.message ||
+          "We could not prepare that image. Please try another photo.",
+      });
+      return;
+    }
+
+    try {
+      const result = await uploadMedia({
+        file: preparedFile,
+        requestUploadUrl,
+        confirmUpload,
+        onStage: logUploadStage,
+        onProgress: setUploadProgress,
+      });
+
+      handleUploadConfirmed(result.confirmation);
+    } catch (error) {
+      setUploadStage("idle");
+
+      if (error?.phase === MEDIA_UPLOAD_STAGES.CONFIRMING && error?.key) {
+        setPendingConfirmKey(error.key);
+        setUploadError({ kind: "confirm", message: error.message });
+        return;
+      }
+
+      setUploadError({
+        kind: "upload",
+        message:
+          error?.message ||
+          "We could not upload this photo. Please try again.",
+      });
+    }
+  };
+
+  const handleRetryConfirmation = async () => {
+    if (!pendingConfirmKey || uploadInProgress) return;
+
+    setUploadError(null);
+    logUploadStage(MEDIA_UPLOAD_STAGES.CONFIRMING);
+    setUploadProgress(100);
+
+    try {
+      const result = await confirmMediaUpload({
+        key: pendingConfirmKey,
+        confirmUpload,
+        onStage: logUploadStage,
+      });
+
+      handleUploadConfirmed(result.confirmation);
+    } catch (error) {
+      setUploadStage("idle");
+
+      if (error?.key) {
+        setPendingConfirmKey(error.key);
+      }
+
+      setUploadError({
+        kind: "confirm",
+        message:
+          error?.message ||
+          "The photo uploaded, but we could not save it. Please try again.",
+      });
+    }
+  };
+
+  const handleCancelUpload = () => {
+    if (uploadInProgress) return;
+
+    setSelectedImage(null);
+    setUploadError(null);
+    setPendingConfirmKey("");
+    setUploadProgress(0);
+    setUploadStage("idle");
+  };
+
+  const handleDismissUpload = () => {
+    if (uploadInProgress) return;
+
+    setUploadError(null);
+    setUploadProgress(0);
+    setUploadStage("idle");
+  };
+
+  const stageCopy = UPLOAD_STAGE_COPY[uploadStage];
+  const isChoosing = !selectedImage && !uploadError && uploadStage !== "completed";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg, image/png, image/webp"
+        onChange={handleSelectImage}
+        className="sr-only"
+        tabIndex={-1}
+        aria-label={`Choose a profile photo for ${getDisplayName(child)}`}
+      />
+
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700">
+          <Camera size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-extrabold text-[#071A52]">
+            Profile photo
+          </h2>
+          <p className="mt-0.5 text-[13px] text-slate-500">
+            This photo identifies your child at school, including at the gate.
+          </p>
+        </div>
+      </div>
+
+      {isChoosing ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <ChildAvatar
+              child={child}
+              className="h-12 w-12 rounded-2xl bg-slate-100 text-sm text-slate-500"
+            />
+
+            <p className="truncate text-[13px] font-medium text-slate-500">
+              {child.profileImageUrl
+                ? "Shown to the school and at the gate."
+                : "No photo on record yet."}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openImagePicker}
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-bold text-[#123A8F] transition hover:border-blue-300 hover:bg-blue-50"
+          >
+            <ImagePlus size={14} />
+            {child.profileImageUrl ? "Change photo" : "Add photo"}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="flex items-start gap-3">
+            {uploadInProgress ? (
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : selectedImage ? (
+              <img
+                src={selectedImage.previewUrl}
+                alt="Selected photo preview"
+                className="h-14 w-14 shrink-0 rounded-xl object-cover"
+              />
+            ) : (
+              <ChildAvatar
+                child={child}
+                className="h-14 w-14 rounded-xl bg-slate-100 text-sm text-slate-500"
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
+              {uploadError ? (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[13px] font-medium text-rose-700"
+                >
+                  {uploadError.message}
+                </p>
+              ) : stageCopy ? (
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    {stageCopy.title}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-slate-500">
+                    {stageCopy.description}
+                  </p>
+                </div>
+              ) : uploadStage === "completed" ? (
+                <p className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13px] font-medium text-emerald-800">
+                  <Check size={15} className="mt-0.5 shrink-0" />
+                  Your child&apos;s profile photo has been updated.
+                </p>
+              ) : (
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    New photo ready to upload
+                  </p>
+                  <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                    {selectedImage?.name} · {formatFileSize(selectedImage?.size)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {!uploadInProgress && (
+              <button
+                type="button"
+                onClick={
+                  uploadStage === "completed"
+                    ? handleDismissUpload
+                    : handleCancelUpload
+                }
+                className="shrink-0 cursor-pointer rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label={
+                  uploadStage === "completed"
+                    ? "Dismiss photo status"
+                    : "Cancel photo selection"
+                }
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {uploadStage === MEDIA_UPLOAD_STAGES.UPLOADING && (
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                <span>Uploading to secure storage</span>
+                {typeof uploadProgress === "number" && (
+                  <span>{uploadProgress}%</span>
+                )}
+              </div>
+
+              <div
+                role="progressbar"
+                aria-label="Profile photo upload progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={
+                  typeof uploadProgress === "number"
+                    ? uploadProgress
+                    : undefined
+                }
+                className="h-2 overflow-hidden rounded-full bg-slate-100"
+              >
+                {typeof uploadProgress === "number" ? (
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#0A2463] to-[#123A8F] transition-[width] duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-2/5 animate-pulse rounded-full bg-gradient-to-r from-[#0A2463] to-[#123A8F]" />
+                )}
+              </div>
+            </div>
+          )}
+
+          {!uploadInProgress && (
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              {uploadError ? (
+                <>
+                  {uploadError.kind === "select" ? (
+                    <button
+                      type="button"
+                      onClick={openImagePicker}
+                      className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+                    >
+                      <Camera size={15} />
+                      Choose another photo
+                    </button>
+                  ) : uploadError.kind === "confirm" ? (
+                    <button
+                      type="button"
+                      onClick={handleRetryConfirmation}
+                      className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+                    >
+                      <RefreshCw size={15} />
+                      Retry saving
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleUpload}
+                      className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+                    >
+                      <RefreshCw size={15} />
+                      Try again
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                  >
+                    {uploadError.kind === "confirm" ? "Discard photo" : "Cancel"}
+                  </button>
+                </>
+              ) : uploadStage === "completed" ? (
+                <button
+                  type="button"
+                  onClick={handleDismissUpload}
+                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  Done
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpload}
+                    className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#0A2463] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#123A8F]"
+                  >
+                    <Upload size={15} />
+                    Upload photo
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="mt-4 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 text-[13px] leading-5 text-blue-900">
+        <Info size={15} className="mt-0.5 shrink-0" />
+        Use a clear, recent photo of your child on its own. The school can
+        replace it at any time.
+      </p>
+    </section>
+  );
+}
+
+function ChildProfileBody({ child, onChildChange }) {
   const [email, setEmail] = useState(child.email || "");
 
   const fields = [
@@ -476,9 +954,10 @@ function ChildProfileBody({ child }) {
         <div className="pointer-events-none absolute -bottom-20 right-24 h-44 w-44 rounded-full bg-cyan-400/[0.08] blur-2xl" />
 
         <div className="relative flex flex-wrap items-center gap-5">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-2xl font-black shadow-inner">
-            {getInitials(child)}
-          </div>
+          <ChildAvatar
+            child={child}
+            className="h-20 w-20 rounded-2xl border border-white/20 bg-white/10 text-2xl shadow-inner"
+          />
 
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">
@@ -546,6 +1025,13 @@ function ChildProfileBody({ child }) {
             </div>
           </section>
 
+          <ChildPhotoCard
+            child={child}
+            onPhotoChange={(profileImageUrl) =>
+              onChildChange({ id: child.id, profileImageUrl })
+            }
+          />
+
           <ChildEmailCard
             childId={child.id}
             email={email}
@@ -595,9 +1081,9 @@ function ChildProfileBody({ child }) {
               Parent access
             </h3>
             <p className="mt-2 text-[13px] leading-5 text-slate-500">
-              You can update your child&apos;s email address. Other student
-              records are managed by the school, and results appear here once
-              they are published.
+              You can update your child&apos;s profile photo and email address.
+              Other student records are managed by the school, and results
+              appear here once they are published.
             </p>
 
             <Link
@@ -617,7 +1103,13 @@ function ChildProfileBody({ child }) {
 export default function ChildProfilePage() {
   return (
     <ChildPageLayout section="profile" title="Profile" hideIdentity>
-      {({ child }) => <ChildProfileBody key={child.id} child={child} />}
+      {({ child, onChildChange }) => (
+        <ChildProfileBody
+          key={child.id}
+          child={child}
+          onChildChange={onChildChange}
+        />
+      )}
     </ChildPageLayout>
   );
 }

@@ -14,9 +14,9 @@ import {
   avatarPalettes,
   getClassName,
   getDisplayName,
-  getInitials,
   getRelationshipLabel,
 } from "./childDisplay";
+import ChildAvatar from "./ChildAvatar";
 import ChildStatusBadge from "./ChildStatusBadge";
 
 export default function ChildPageLayout({
@@ -71,6 +71,14 @@ export default function ChildPageLayout({
   const childIndex = childrenList.findIndex((item) => item.id === studentId);
   const child = childIndex >= 0 ? childrenList[childIndex] : null;
   const palette = avatarPalettes[Math.max(0, childIndex) % avatarPalettes.length];
+
+  const handleChildChange = (updatedChild) => {
+    setChildrenList((current) =>
+      current.map((item) =>
+        item.id === updatedChild.id ? { ...item, ...updatedChild } : item
+      )
+    );
+  };
 
   return (
     <div className="min-h-full bg-slate-50/70 p-4 sm:p-6 lg:p-8">
@@ -190,11 +198,10 @@ export default function ChildPageLayout({
             {!hideIdentity && (
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div className="flex flex-wrap items-center gap-4">
-                  <div
-                    className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${palette} text-lg font-black text-white shadow-sm`}
-                  >
-                    {getInitials(child)}
-                  </div>
+                  <ChildAvatar
+                    child={child}
+                    className={`h-16 w-16 rounded-2xl bg-gradient-to-br ${palette} text-lg text-white shadow-sm`}
+                  />
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2.5">
@@ -222,7 +229,7 @@ export default function ChildPageLayout({
               </section>
             )}
 
-            {children({ child })}
+            {children({ child, onChildChange: handleChildChange })}
           </>
         )}
       </div>

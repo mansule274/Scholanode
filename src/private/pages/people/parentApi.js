@@ -2,6 +2,21 @@ import privateAxiosInstance from '../../../auth/privateAxiosInstance';
 
 const parentsBasePath = '/parents';
 
+// Signed upload and download URLs must never reach the console.
+function redactSignedUrls(data) {
+  if (!data || typeof data !== 'object') return data;
+
+  const safeData = { ...data };
+  delete safeData.uploadUrl;
+
+  if (safeData.data && typeof safeData.data === 'object') {
+    safeData.data = { ...safeData.data };
+    delete safeData.data.profileImageUrl;
+  }
+
+  return safeData;
+}
+
 export async function getParentDashboard() {
   const endpoint = `${parentsBasePath}/dashboard`;
   console.log('Parent dashboard request starting:', endpoint);
@@ -59,6 +74,61 @@ export async function verifyChildEmailChange(studentId, { newEmail, code }) {
     return response.data;
   } catch (error) {
     console.error('Child email change verification error:', {
+      endpoint,
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
+export async function requestChildProfileImageUploadUrl(
+  studentId,
+  { fileName, contentType, fileSize }
+) {
+  const endpoint = `${parentsBasePath}/children/${encodeURIComponent(studentId)}/image/upload-url`;
+  console.log('Child profile image upload URL request starting:', endpoint, {
+    fileName,
+    contentType,
+    fileSize,
+  });
+
+  try {
+    const response = await privateAxiosInstance.post(endpoint, {
+      fileName,
+      contentType,
+      fileSize,
+    });
+    console.log('Child profile image upload URL response:', {
+      status: response.status,
+      data: redactSignedUrls(response.data),
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Child profile image upload URL error:', {
+      endpoint,
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    throw error;
+  }
+}
+
+export async function confirmChildProfileImageUpload(studentId, { key }) {
+  const endpoint = `${parentsBasePath}/children/${encodeURIComponent(studentId)}/image/confirm`;
+  console.log('Child profile image confirmation starting:', endpoint);
+
+  try {
+    const response = await privateAxiosInstance.patch(endpoint, { key });
+    console.log('Child profile image confirmation response:', {
+      status: response.status,
+      data: redactSignedUrls(response.data),
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Child profile image confirmation error:', {
       endpoint,
       status: error?.response?.status,
       data: error?.response?.data,
