@@ -216,7 +216,7 @@ export default function VerificationModal({
         {/* Primary action */}
         <button
           type="button"
-          onClick={handleVerifyCode}
+          onClick={() => handleVerifyCode()}
           disabled={busy || code.length !== 6}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#071A52] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#0B256C] disabled:cursor-not-allowed disabled:opacity-50"
         >

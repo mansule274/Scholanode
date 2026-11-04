@@ -39,6 +39,7 @@ import {
   unlinkStudentFromParent,
 } from './parentApi';
 import { getStudents } from './studentsApi';
+import PopoverMenu from '../../components/PopoverMenu';
 
 const relationshipOptions = ['FATHER', 'MOTHER', 'GUARDIAN', 'OTHER'];
 const statusOptions = ['ACTIVE', 'INACTIVE', 'PENDING'];
@@ -448,9 +449,19 @@ export default function ParentManagement() {
                     setPage(1);
                   }}
                   placeholder="Search name, phone, email or student"
-                  className={`${inputClass} pl-10`}
+                  className={`${inputClass} pl-10 pr-9`}
                   aria-label="Search parents"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearch(''); setPage(1); }}
+                    aria-label="Clear parent search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
               <FilterSelect value={statusFilter} onChange={(value) => { setStatusFilter(value); setPage(1); }} label="All statuses" options={['ALL', ...statusOptions]} format={formatStatus} />
               <FilterSelect value={relationshipFilter} onChange={(value) => { setRelationshipFilter(value); setPage(1); }} label="All relationships" options={['ALL', ...relationshipOptions]} format={formatRelationship} />
@@ -669,6 +680,7 @@ export default function ParentManagement() {
 
 function ParentRow({ parent, selected, onSelect, menu, setMenu, onView, onManageStudents, onDelete, onCopy, copied }) {
   const children = parent.studentRelationships ?? [];
+  const menuRef = useRef(null);
   return (
     <tr className="transition hover:bg-slate-50/70">
       <td className="px-5 py-4">
@@ -703,9 +715,9 @@ function ParentRow({ parent, selected, onSelect, menu, setMenu, onView, onManage
       </td>
       <td className="px-5 py-4"><StatusBadge status={parent.status} /></td>
       <td className="px-5 py-4 text-right">
-        <div className="relative inline-block text-left">
-          <button type="button" onClick={() => setMenu(menu === parent.id ? '' : parent.id)} aria-label={`Actions for ${parent.firstName} ${parent.surName}`} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"><MoreVertical size={18} /></button>
-          {menu === parent.id && <ActionMenu parent={parent} onView={onView} onManageStudents={onManageStudents} onDelete={onDelete} onCopy={onCopy} />}
+        <div ref={menuRef} className="relative inline-block text-left">
+          <button type="button" onClick={() => setMenu(menu === parent.id ? '' : parent.id)} aria-haspopup="menu" aria-expanded={menu === parent.id} aria-label={`Actions for ${parent.firstName} ${parent.surName}`} title="Actions" className={`flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 hover:text-[#0A2463] ${menu === parent.id ? 'bg-slate-100 text-[#0A2463]' : 'text-slate-500'}`}><MoreVertical size={18} /></button>
+          {menu === parent.id && <ActionMenu parent={parent} anchorRef={menuRef} onClose={() => setMenu('')} onView={onView} onManageStudents={onManageStudents} onDelete={onDelete} onCopy={onCopy} />}
         </div>
       </td>
     </tr>
@@ -714,6 +726,7 @@ function ParentRow({ parent, selected, onSelect, menu, setMenu, onView, onManage
 
 function ParentCard({ parent, selected, onSelect, menu, setMenu, onView, onManageStudents, onDelete, onCopy, copied }) {
   const children = parent.studentRelationships ?? [];
+  const menuRef = useRef(null);
   return (
     <article className="p-4">
       <div className="flex items-start justify-between gap-3">
@@ -722,9 +735,9 @@ function ParentCard({ parent, selected, onSelect, menu, setMenu, onView, onManag
           <Avatar parent={parent} />
           <div className="min-w-0"><button type="button" onClick={onView} className="truncate text-left font-bold text-slate-800">{parent.firstName} {parent.surName}</button><p className="font-mono text-[11px] text-slate-400">{parent.loginId || parent.id}</p></div>
         </div>
-        <div className="relative">
-          <button type="button" onClick={() => setMenu(menu === parent.id ? '' : parent.id)} aria-label="Parent actions" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"><MoreVertical size={18} /></button>
-          {menu === parent.id && <ActionMenu parent={parent} onView={onView} onManageStudents={onManageStudents} onDelete={onDelete} onCopy={onCopy} />}
+        <div ref={menuRef} className="relative">
+          <button type="button" onClick={() => setMenu(menu === parent.id ? '' : parent.id)} aria-haspopup="menu" aria-expanded={menu === parent.id} aria-label={`Actions for ${parent.firstName} ${parent.surName}`} title="Actions" className={`flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 hover:text-[#0A2463] ${menu === parent.id ? 'bg-slate-100 text-[#0A2463]' : 'text-slate-500'}`}><MoreVertical size={18} /></button>
+          {menu === parent.id && <ActionMenu parent={parent} anchorRef={menuRef} onClose={() => setMenu('')} onView={onView} onManageStudents={onManageStudents} onDelete={onDelete} onCopy={onCopy} />}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2"><StatusBadge status={parent.status} /><span className="text-xs text-slate-500">Account {formatStatus(parent.userStatus)}</span></div>
@@ -741,15 +754,15 @@ function ParentCard({ parent, selected, onSelect, menu, setMenu, onView, onManag
   );
 }
 
-function ActionMenu({ parent, onView, onManageStudents, onDelete, onCopy }) {
+function ActionMenu({ parent, anchorRef, onClose, onView, onManageStudents, onDelete, onCopy }) {
   return (
-    <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-left shadow-xl">
-      <button type="button" onClick={onView} className={menuItem}><Eye size={15} /> View details</button>
-      <button type="button" onClick={() => onCopy(parent.phoneNumber, `phone-${parent.id}`)} className={menuItem}><Copy size={15} /> Copy phone number</button>
-      <button type="button" onClick={onManageStudents} className={menuItem}><Users size={15} /> Manage students</button>
+    <PopoverMenu anchorRef={anchorRef} onClose={onClose} width={216}>
+      <button type="button" role="menuitem" onClick={onView} className={menuItem}><Eye size={15} /> View details</button>
+      <button type="button" role="menuitem" onClick={() => onCopy(parent.phoneNumber, `phone-${parent.id}`)} className={menuItem}><Copy size={15} /> Copy phone number</button>
+      <button type="button" role="menuitem" onClick={onManageStudents} className={menuItem}><Users size={15} /> Manage students</button>
       <div className="my-1 border-t border-slate-100" />
-      <button type="button" onClick={onDelete} className={`${menuItem} text-rose-700 hover:bg-rose-50`}><Trash2 size={15} /> Permanently delete</button>
-    </div>
+      <button type="button" role="menuitem" onClick={onDelete} className={`${menuItem} text-rose-700 hover:bg-rose-50`}><Trash2 size={15} /> Permanently delete</button>
+    </PopoverMenu>
   );
 }
 

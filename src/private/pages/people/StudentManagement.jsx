@@ -32,6 +32,7 @@ import {
   linkStudentToParent,
   unlinkStudentFromParent,
 } from "./parentApi";
+import PopoverMenu from "../../components/PopoverMenu";
 
 /* ============================================================
    CONFIG
@@ -979,8 +980,23 @@ export default function StudentManagement() {
                     setStudentsPage(1);
                   }}
                   placeholder="Search name or admission no."
-                  className={`${inputClass} pl-10`}
+                  aria-label="Search students"
+                  className={inputClass("pl-10 pr-9")}
                 />
+
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setStudentsPage(1);
+                    }}
+                    aria-label="Clear student search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
 
               <SelectFilter
@@ -1313,6 +1329,7 @@ function StudentRow({
   onManageParents,
 }) {
   const isOpen = menu === student.id;
+  const menuRef = useRef(null);
 
   return (
     <tr className="transition hover:bg-slate-50/70">
@@ -1397,14 +1414,19 @@ function StudentRow({
       </td>
 
       <td className="px-5 py-4 text-right">
-        <div className="relative inline-block text-left">
+        <div ref={menuRef} className="relative inline-block text-left">
           <button
             type="button"
             onClick={() =>
               setMenu(isOpen ? null : student.id)
             }
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            aria-haspopup="menu"
+            aria-expanded={isOpen}
+            aria-label={`Actions for ${student.firstName} ${student.surName}`}
             title="Actions"
+            className={`flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 hover:text-[#071A52] ${
+              isOpen ? "bg-slate-100 text-[#071A52]" : "text-slate-500"
+            }`}
           >
             <MoreVertical size={18} />
           </button>
@@ -1412,6 +1434,8 @@ function StudentRow({
           {isOpen && (
             <ActionMenu
               student={student}
+              anchorRef={menuRef}
+              onClose={() => setMenu(null)}
               onView={onView}
               onEdit={onEdit}
               onToggleStatus={onToggleStatus}
@@ -1442,6 +1466,7 @@ function MobileStudentCard({
   onManageParents,
 }) {
   const isOpen = menu === student.id;
+  const menuRef = useRef(null);
 
   return (
     <div className="relative p-4">
@@ -1470,13 +1495,19 @@ function MobileStudentCard({
           </div>
         </div>
 
-        <div className="relative">
+        <div ref={menuRef} className="relative">
           <button
             type="button"
             onClick={() =>
               setMenu(isOpen ? null : student.id)
             }
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+            aria-haspopup="menu"
+            aria-expanded={isOpen}
+            aria-label={`Actions for ${student.firstName} ${student.surName}`}
+            title="Actions"
+            className={`flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 hover:text-[#071A52] ${
+              isOpen ? "bg-slate-100 text-[#071A52]" : "text-slate-500"
+            }`}
           >
             <MoreVertical size={18} />
           </button>
@@ -1484,6 +1515,8 @@ function MobileStudentCard({
           {isOpen && (
             <ActionMenu
               student={student}
+              anchorRef={menuRef}
+              onClose={() => setMenu(null)}
               onView={onView}
               onEdit={onEdit}
               onToggleStatus={onToggleStatus}
@@ -1548,6 +1581,8 @@ function MobileStudentCard({
 
 function ActionMenu({
   student,
+  anchorRef,
+  onClose,
   onView,
   onEdit,
   onToggleStatus,
@@ -1555,9 +1590,10 @@ function ActionMenu({
   onManageParents,
 }) {
   return (
-    <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-left shadow-xl">
+    <PopoverMenu anchorRef={anchorRef} onClose={onClose} width={224}>
       <button
         type="button"
+        role="menuitem"
         onClick={() => onView(student)}
         className={menuItem}
       >
@@ -1567,6 +1603,7 @@ function ActionMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={() => onEdit(student)}
         className={menuItem}
       >
@@ -1576,6 +1613,7 @@ function ActionMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={() => onManageParents(student)}
         className={menuItem}
       >
@@ -1585,6 +1623,7 @@ function ActionMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={() => onCopy(student)}
         className={menuItem}
       >
@@ -1596,6 +1635,7 @@ function ActionMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={() => onToggleStatus(student)}
         className={`${menuItem} ${
           student.status === "ACTIVE"
@@ -1615,7 +1655,7 @@ function ActionMenu({
           </>
         )}
       </button>
-    </div>
+    </PopoverMenu>
   );
 }
 
