@@ -40,6 +40,8 @@ import {
 } from './parentApi';
 import { getStudents } from './studentsApi';
 import PopoverMenu from '../../components/PopoverMenu';
+import { downloadFile, toCsv } from '../../../utils/csv';
+import { collectAllPages } from '../../../utils/pagedExport';
 
 const relationshipOptions = ['FATHER', 'MOTHER', 'GUARDIAN', 'OTHER'];
 const statusOptions = ['ACTIVE', 'INACTIVE', 'PENDING'];
@@ -72,6 +74,7 @@ export default function ParentManagement() {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [menu, setMenu] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
@@ -310,7 +313,7 @@ export default function ParentManagement() {
     );
   };
 
-  const exportParents = (records = filteredParents) => {
+  const writeParentsCsv = (records) => {
     const rows = [
       ['firstName', 'surName', 'email', 'phoneNumber', 'status', 'userStatus', 'loginId', 'childrenCount', 'students', 'relationships'],
       ...records.map((parent) => [
@@ -329,9 +332,41 @@ export default function ParentManagement() {
         (parent.studentRelationships || []).map((item) => item.relationship).join('; '),
       ]),
     ];
-    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    downloadFile(csv, 'scholanode-parents.csv', 'text/csv;charset=utf-8;');
+    downloadFile(toCsv(rows), 'scholanode-parents.csv');
     setMessage(`${records.length} parent record${records.length === 1 ? '' : 's'} exported.`);
+  };
+
+  const exportParents = async (records) => {
+    if (records) {
+      writeParentsCsv(records);
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const { records: collected, truncated } = await collectAllPages(
+        ({ page, limit }) =>
+          getParents({
+            page,
+            limit,
+            search: search.trim(),
+            status: statusFilter,
+            relationship: relationshipFilter,
+          }).then((response) => ({
+            records: response?.data?.parents ?? [],
+            totalPages: response?.data?.pagination?.totalPages,
+          }))
+      );
+
+      writeParentsCsv(collected);
+      if (truncated) {
+        setMessage(`Export stopped at ${collected.length} records to keep the file manageable. Narrow the filters for older entries.`);
+      }
+    } catch {
+      setMessage('Unable to export parents. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const copyContact = async (value, id) => {
@@ -494,8 +529,8 @@ export default function ParentManagement() {
                   <Download size={15} /> Export selected
                 </button>
               )}
-              <button type="button" onClick={() => exportParents()} className={secondaryButton}>
-                <FileSpreadsheet size={15} /> Export {filteredParents.length}
+              <button type="button" onClick={() => exportParents()} disabled={exporting} className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-60`}>
+                {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />} Export {pagination.total || filteredParents.length}
               </button>
               {selectedIds.length > 0 && (
                 <button type="button" onClick={() => setSelectedIds([])} className={secondaryButton}>
@@ -1683,22 +1718,6 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function downloadFile(contents, fileName, type) {
-  const url = URL.createObjectURL(new Blob([contents], { type }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 const thClass = 'px-5 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-400';

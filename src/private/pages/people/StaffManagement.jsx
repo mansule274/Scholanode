@@ -24,6 +24,7 @@ import {
 import { Link } from 'react-router-dom';
 import { activateStaff, deactivateStaff, getLeaderStatus, getStaff, importStaffCsv, inviteStaff, resetStaffPassword, updateStaff } from './staffApi';
 import { ROLES } from '../../../utils/roles';
+import { downloadFile, toCsv } from '../../../utils/csv';
 import PopoverMenu from '../../components/PopoverMenu';
 import ProfilePendingBadge from '../../components/ProfilePendingBadge';
 import {
@@ -419,23 +420,35 @@ export default function StaffManagement() {
       'Sample,Staff One,staff.one@example.com,STAFF\n' +
       'Sample,Staff Two,staff.two@example.com,ADMINISTRATOR\n';
 
-    const blob = new Blob([csv], {
-      type: 'text/csv;charset=utf-8;',
-    });
+    downloadFile(csv, 'scholanode-staff-template.csv');
+  };
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+  const exportStaff = (records = filteredStaff) => {
+    if (!records.length) {
+      setActionError('There are no staff records to export.');
+      return;
+    }
 
-    link.href = url;
-    link.download = 'scholanode-staff-template.csv';
+    const rows = [
+      ['firstName', 'surName', 'email', 'phoneNumber', 'role', 'status', 'loginId', 'lastLoginAt', 'joined', 'profilePending'],
+      ...records.map((member) => [
+        // Invited staff keep placeholder names in the database; an export that
+        // repeated them would read like a roster of people called "firstName".
+        member.profilePending ? '' : member.firstName,
+        member.profilePending ? '' : member.lastName,
+        member.email,
+        member.phone,
+        member.role,
+        member.status,
+        member.loginId,
+        member.lastLoginAt ?? '',
+        member.dateJoined,
+        member.profilePending ? 'YES' : 'NO',
+      ]),
+    ];
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
+    downloadFile(toCsv(rows), 'scholanode-staff.csv');
+    setActionMessage(`${records.length} staff record${records.length === 1 ? '' : 's'} exported.`);
   };
 
   return (
@@ -668,6 +681,16 @@ export default function StaffManagement() {
                 <option value="INACTIVE">Inactive</option>
                 <option value="SUSPENDED">Suspended</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => exportStaff()}
+                disabled={filteredStaff.length === 0}
+                title={`Export ${filteredStaff.length} staff matching the current filters`}
+                className={`${secondaryButton} inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <FileSpreadsheet size={16} /> Export {filteredStaff.length}
+              </button>
             </div>
           </div>
         </section>

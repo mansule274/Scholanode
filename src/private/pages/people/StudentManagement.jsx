@@ -33,6 +33,8 @@ import {
   unlinkStudentFromParent,
 } from "./parentApi";
 import PopoverMenu from "../../components/PopoverMenu";
+import { downloadFile, toCsv } from "../../../utils/csv";
+import { collectAllPages } from "../../../utils/pagedExport";
 
 /* ============================================================
    CONFIG
@@ -90,6 +92,8 @@ export default function StudentManagement() {
   const [creatingStudent, setCreatingStudent] = useState(false);
   const [createStudentError, setCreateStudentError] = useState("");
   const [studentActionMessage, setStudentActionMessage] = useState("");
+  const [studentActionError, setStudentActionError] = useState("");
+  const [exportingStudents, setExportingStudents] = useState(false);
   const [parents, setParents] = useState([]);
   const [parentsLoading, setParentsLoading] = useState(true);
   const [parentsError, setParentsError] = useState("");
@@ -300,6 +304,7 @@ export default function StudentManagement() {
     setSelectedStudent(null);
     setCreateStudentError("");
     setStudentActionMessage("");
+    setStudentActionError("");
     setModal("create");
     setMenu(null);
   };
@@ -760,21 +765,81 @@ export default function StudentManagement() {
       "Amina,Abubakar,SN-2026-001,FEMALE,2014-05-12,JSS 1,A,2026-09-01\n" +
       "Musa,Ibrahim,SN-2026-002,MALE,2013-11-03,JSS 2,B,2026-09-01\n";
 
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
+    downloadFile(csv, "scholanode-student-template.csv");
+  };
 
-    const url = URL.createObjectURL(blob);
+  const exportStudents = async () => {
+    setExportingStudents(true);
+    setStudentActionError("");
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "scholanode-student-template.csv";
+    try {
+      const { records, truncated } = await collectAllPages(
+        ({ page, limit }) =>
+          getStudents({
+            page,
+            limit,
+            search: search.trim(),
+            currentClassId: classFilter === "ALL" ? undefined : classFilter,
+            gender: genderFilter === "ALL" ? undefined : genderFilter,
+            admissionStatus: statusFilter === "ALL" ? undefined : statusFilter,
+          }).then((response) => ({
+            records: response?.data?.students ?? [],
+            totalPages: response?.data?.pagination?.totalPages,
+          }))
+      );
 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      if (records.length === 0) {
+        setStudentActionError(
+          "There are no students matching the current filters to export."
+        );
+        return;
+      }
 
-    URL.revokeObjectURL(url);
+      const rows = [
+        [
+          "firstName",
+          "surName",
+          "admissionNumber",
+          "gender",
+          "classLevel",
+          "arm",
+          "admissionStatus",
+          "accountStatus",
+          "parentCount",
+          "dateOfBirth",
+          "enrollmentDate",
+          "lastLoginAt",
+        ],
+        ...records.map((student) => [
+          student.firstName,
+          student.surName,
+          student.admissionNumber,
+          student.gender,
+          student.currentClass ?? "",
+          student.currentArm ?? "",
+          student.admissionStatus,
+          student.status,
+          student.parentCount ?? 0,
+          student.dateOfBirth ?? "",
+          student.enrollmentDate ?? "",
+          student.lastLoginAt ?? "",
+        ]),
+      ];
+
+      downloadFile(toCsv(rows), "scholanode-students.csv");
+      setStudentActionMessage(
+        truncated
+          ? `Export stopped at ${records.length} records to keep the file manageable. Narrow the filters for the rest.`
+          : `${records.length} student record${records.length === 1 ? "" : "s"} exported.`
+      );
+    } catch (requestError) {
+      setStudentActionError(
+        requestError?.response?.data?.message ||
+          "Unable to export students. Please try again."
+      );
+    } finally {
+      setExportingStudents(false);
+    }
   };
 
   const handleCsvSelect = async (event) => {
@@ -912,14 +977,24 @@ export default function StudentManagement() {
           </p>
         </header>
 
-        {studentActionMessage && (
-          <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-            <span>{studentActionMessage}</span>
+        {(studentActionMessage || studentActionError) && (
+          <div
+            role={studentActionError ? "alert" : "status"}
+            className={`mt-5 flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm ${
+              studentActionError
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            <span>{studentActionError || studentActionMessage}</span>
             <button
               type="button"
-              onClick={() => setStudentActionMessage("")}
+              onClick={() => {
+                setStudentActionMessage("");
+                setStudentActionError("");
+              }}
               aria-label="Dismiss message"
-              className="rounded-lg p-1 hover:bg-emerald-100"
+              className={`rounded-lg p-1 ${studentActionError ? "hover:bg-rose-100" : "hover:bg-emerald-100"}`}
             >
               <X size={16} />
             </button>
@@ -1044,6 +1119,23 @@ export default function StudentManagement() {
                 allLabel="All statuses"
                 formatter={formatAdmissionStatus}
               />
+
+              <button
+                type="button"
+                onClick={exportStudents}
+                disabled={exportingStudents || pagination.totalItems === 0}
+                title={`Export all ${pagination.totalItems} students matching the current filters`}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportingStudents ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <FileSpreadsheet size={16} />
+                )}
+                {exportingStudents
+                  ? "Preparing export…"
+                  : `Export ${pagination.totalItems}`}
+              </button>
             </div>
           </div>
         </section>
