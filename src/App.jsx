@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import logoMark from './assets/vite.svg';
 import NotificationProvider from './context/NotificationProvider';
 import { useUserContext } from './context/UserContext';
-import { canAccessSchoolSupport } from './utils/roles';
+import { canAccessSchoolSupport, normalizeRole, ROLES } from './utils/roles';
 
 import PublicAppShell from './public/PublicAppShell';
 import HomePage from './public/pages/HomePage';
@@ -116,6 +116,23 @@ function HelpSupportRoute() {
   );
 }
 
+const ADMINISTRATOR_ROLES = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR];
+
+function RequireScannerAccess({ allowAdministrators = false, children }) {
+  const { user } = useUserContext();
+  const role = normalizeRole(user?.role);
+  const isAllowed =
+    role === ROLES.SECURITY ||
+    Boolean(user?.canScanStudents) ||
+    (allowAdministrators && ADMINISTRATOR_ROLES.includes(role));
+
+  if (!isAllowed) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function PrivateRoutes() {
   return (
     <Routes>
@@ -140,8 +157,8 @@ function PrivateRoutes() {
       {/* Attendance & security */}
       <Route path="/attendance" element={<PrivateAppShell pageTitle="Form Master Attendance"><FormMasterAttendance /></PrivateAppShell>} />
       <Route path="/gate-access" element={<RequireAdministrator><PrivateAppShell pageTitle="Gate Access"><GateAccess /></PrivateAppShell></RequireAdministrator>} />
-      <Route path="/verify-student" element={<PrivateAppShell pageTitle="Verify Student"><VerifyStudent /></PrivateAppShell>} />
-      <Route path="/scan-history" element={<PrivateAppShell pageTitle="Gate Scan History"><ScanHistoryPage /></PrivateAppShell>} />
+      <Route path="/verify-student" element={<RequireScannerAccess><PrivateAppShell pageTitle="Verify Student"><VerifyStudent /></PrivateAppShell></RequireScannerAccess>} />
+      <Route path="/scan-history" element={<RequireScannerAccess allowAdministrators><PrivateAppShell pageTitle="Gate Scan History"><ScanHistoryPage /></PrivateAppShell></RequireScannerAccess>} />
 
       {/* Parents */}
       <Route path="/children/:studentId/profile" element={<PrivateAppShell pageTitle="Student Profile"><ChildProfilePage /></PrivateAppShell>} />

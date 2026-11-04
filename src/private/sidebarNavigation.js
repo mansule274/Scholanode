@@ -116,8 +116,8 @@ const navigation = [
     tone: 'amber',
     items: [
       { label: 'Gate Access', icon: ShieldCheck, path: '/gate-access', allowedRoles: administratorRoles },
-      { label: 'Verify Student', icon: ShieldCheck, path: '/verify-student', allowedRoles: [ROLES.SECURITY] },
-      { label: 'Scan History', icon: History, path: '/scan-history', allowedRoles: [ROLES.SECURITY] },
+      { label: 'Verify Student', icon: ShieldCheck, path: '/verify-student', requiresScanAccess: true },
+      { label: 'Scan History', icon: History, path: '/scan-history', requiresScanAccess: true, allowedRoles: administratorRoles },
       { label: 'Attendance', icon: ShieldCheck, path: '/attendance', requiresFormMaster: true },
       { label: 'Messages', icon: MessageSquareText, path: '/messages', allowedRoles: administratorRoles },
     ],
@@ -151,6 +151,19 @@ export function getSidebarSectionsForUser(user) {
       items: section.items.filter((item) => {
         if (item.requiresSupportAccess) {
           return canAccessSchoolSupport(user);
+        }
+
+        if (item.requiresScanAccess) {
+          const isAllowedRole =
+            item.allowedRoles?.some(
+              (allowedRole) => normalizeRole(allowedRole) === role
+            ) ?? false;
+
+          return (
+            role === ROLES.SECURITY ||
+            isAllowedRole ||
+            Boolean(user?.canScanStudents)
+          );
         }
 
         if (item.requiresFormMaster && !isFormMaster) {
