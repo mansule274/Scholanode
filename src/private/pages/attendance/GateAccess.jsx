@@ -22,6 +22,7 @@ import {
   MoreVertical,
   Eye,
   Pencil,
+  UserRound,
 } from "lucide-react";
 import {
   createGateSecurity,
@@ -36,12 +37,17 @@ import {
   revokeScannerPermission,
 } from "./gateScannerApi";
 import { getStaff } from "../people/staffApi";
+import ProfilePendingBadge from "../../components/ProfilePendingBadge";
+import {
+  getStaffDisplayName,
+  isProfilePending,
+} from "../../../utils/staffDisplay";
 
 const getInitials = (firstName, surName) =>
   `${firstName?.[0] || ""}${surName?.[0] || ""}`.toUpperCase() || "SC";
 
 const fullName = (person) =>
-  `${person?.firstName || ""} ${person?.surName || ""}`.trim() || "Unknown user";
+  getStaffDisplayName(person) || "Unknown user";
 
 const formatRole = (role) =>
   role
@@ -87,7 +93,7 @@ const apiErrorMessage = (error, fallback) =>
   error?.message ||
   fallback;
 
-const Avatar = ({ firstName, surName, color = "blue" }) => {
+const Avatar = ({ firstName, surName, color = "blue", pending = false }) => {
   const colors = {
     blue: "bg-blue-100 text-blue-800",
     cyan: "bg-cyan-100 text-cyan-800",
@@ -98,10 +104,10 @@ const Avatar = ({ firstName, surName, color = "blue" }) => {
   return (
     <div
       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
-        colors[color] || colors.blue
+        pending ? "bg-slate-100 text-slate-400" : colors[color] || colors.blue
       }`}
     >
-      {getInitials(firstName, surName)}
+      {pending ? <UserRound size={18} /> : getInitials(firstName, surName)}
     </div>
   );
 };
@@ -1134,6 +1140,7 @@ const GateAccess = () => {
                                 firstName={person.firstName}
                                 surName={person.surName}
                                 color="blue"
+                                pending={isProfilePending(person)}
                               />
                               <div>
                                 <p className="text-sm font-semibold text-slate-800">
@@ -1330,18 +1337,22 @@ const GateAccess = () => {
                                 firstName={person.firstName}
                                 surName={person.surName}
                                 color="cyan"
+                                pending={isProfilePending(person)}
                               />
                               <div>
                                 <p className="text-sm font-semibold text-slate-800">
                                   {fullName(person)}
                                 </p>
-                                <p className="mt-0.5 text-xs text-slate-400">
-                                  {person.accountStatus === "ACTIVE"
-                                    ? "Staff account active"
-                                    : `Account ${(
-                                        person.accountStatus || "inactive"
-                                      ).toLowerCase()}`}
-                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  {isProfilePending(person) && <ProfilePendingBadge />}
+                                  <p className="text-xs text-slate-400">
+                                    {person.accountStatus === "ACTIVE"
+                                      ? "Staff account active"
+                                      : `Account ${(
+                                          person.accountStatus || "inactive"
+                                        ).toLowerCase()}`}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -1656,16 +1667,20 @@ const GateAccess = () => {
                         firstName={person.firstName}
                         surName={person.surName}
                         color="cyan"
+                        pending={isProfilePending(person)}
                       />
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-800">
                           {fullName(person)}
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {person.loginId || "No login ID"} ·{" "}
-                          {formatRole(person.role)}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {isProfilePending(person) && <ProfilePendingBadge />}
+                          <p className="text-xs text-slate-500">
+                            {person.loginId || "No login ID"} ·{" "}
+                            {formatRole(person.role)}
+                          </p>
+                        </div>
                       </div>
 
                       <span

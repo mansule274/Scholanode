@@ -21,6 +21,13 @@ import { createAcademicClass } from './academicSetupApi';
 import { assignClassFormMaster, getClasses } from './classesApi';
 import { getStaff } from '../people/staffApi';
 import { armTemplates } from './classTemplates';
+import ProfilePendingBadge from '../../components/ProfilePendingBadge';
+import {
+  PENDING_PROFILE_HINT,
+  PENDING_PROFILE_LABEL,
+  getStaffDisplayName,
+  isProfilePending,
+} from '../../../utils/staffDisplay';
 
 const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
 
@@ -96,7 +103,7 @@ export default function Classes() {
       .map(([level, items]) => [
         level,
         items.filter((item) =>
-          `${item.classLevel} ${item.arm || 'ungrouped'} ${item.formMaster || ''}`
+          `${item.classLevel} ${item.arm || 'ungrouped'} ${item.formMaster || ''} ${item.formMasterPending ? PENDING_PROFILE_LABEL : ''}`
             .toLocaleLowerCase()
             .includes(query),
         ),
@@ -104,7 +111,7 @@ export default function Classes() {
       .filter(([, items]) => items.length);
   }, [classes, search]);
 
-  const assignedCount = classes.filter((item) => item.formMaster).length;
+  const assignedCount = classes.filter((item) => item.formMasterId).length;
   const withoutMasterCount = classes.length - assignedCount;
 
   const openAddModal = () => {
@@ -267,6 +274,7 @@ export default function Classes() {
           <section className="mt-5 space-y-4">
             {grouped.map(([level, items]) => {
               const isExpanded = expanded.includes(level);
+              const assignedInLevel = items.filter((item) => item.formMasterId).length;
               return (
                 <article key={level} className="overflow-visible rounded-3xl border border-slate-200 bg-white shadow-sm">
                   <button type="button" onClick={() => setExpanded((current) => current.includes(level) ? current.filter((item) => item !== level) : [...current, level])} className="flex w-full items-center justify-between gap-4 p-5 text-left hover:bg-slate-50 sm:p-6">
@@ -277,7 +285,7 @@ export default function Classes() {
                           <h3 className="text-xl font-extrabold text-[#071A52]">{level}</h3>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">{items.length} {items.length === 1 ? 'class' : 'classes'}</span>
                         </div>
-                        <p className="mt-1 text-sm text-slate-500">{items.filter((item) => item.formMaster).length} form masters assigned</p>
+                        <p className="mt-1 text-sm text-slate-500">{assignedInLevel} {assignedInLevel === 1 ? 'form master' : 'form masters'} assigned</p>
                       </div>
                     </div>
                     {isExpanded ? <ChevronUp className="text-slate-400" /> : <ChevronDown className="text-slate-400" />}
@@ -355,12 +363,22 @@ function ClassCard({ item, menu, onMenu, onAssign }) {
       <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Form master</p>
-          {item.formMaster
-            ? <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-700"><UserRound size={15} className="text-emerald-600" /> {item.formMaster}</p>
+          {item.formMasterId
+            ? (
+              <>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-sm font-bold text-slate-700">
+                  <UserRound size={15} className="text-emerald-600" /> {item.formMaster}
+                  {item.formMasterPending && <ProfilePendingBadge />}
+                </p>
+                {item.formMasterPending && (
+                  <p className="mt-1 text-xs font-medium text-slate-400">{PENDING_PROFILE_HINT}</p>
+                )}
+              </>
+            )
             : <p className="mt-1 text-sm font-semibold text-amber-700">Not assigned</p>}
         </div>
         <button type="button" onClick={onAssign} disabled={!item.id} title={!item.id ? 'This class record is missing its ID.' : undefined} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-[#071A52] transition hover:border-cyan-300 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:text-slate-400">
-          {item.formMaster ? 'Change' : 'Assign'}
+          {item.formMasterId ? 'Change' : 'Assign'}
         </button>
       </div>
     </div>
@@ -376,7 +394,7 @@ function FormMasterModal({ classItem, staff, loading, error, selectedId, onSelec
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-600">Class management</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">{classItem.formMaster ? 'Change form master' : 'Assign form master'}</h2>
+            <h2 className="mt-1 text-2xl font-extrabold text-[#071A52]">{classItem.formMasterId ? 'Change form master' : 'Assign form master'}</h2>
             <p className="mt-1 text-sm text-slate-500">Choose a staff member for {classItem.classLevel}{classItem.arm ? ` · ${classItem.arm}` : ''}.</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="Close form master assignment" className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50"><X size={19} /></button>
@@ -388,16 +406,21 @@ function FormMasterModal({ classItem, staff, loading, error, selectedId, onSelec
           <label htmlFor="form-master" className="mb-2 block text-sm font-bold text-slate-700">School staff</label>
           <select id="form-master" value={selectedId} onChange={(event) => onSelect(event.target.value)} className={inputClass} required disabled={loading || availableStaff.length === 0}>
             <option value="">Select a staff member</option>
-            {availableStaff.map((member) => <option key={member.id} value={member.id}>{member.name}{member.role ? ` · ${member.role}` : ''}</option>)}
+            {availableStaff.map((member) => <option key={member.id} value={member.id}>{member.name}{member.profilePending ? ` · ${PENDING_PROFILE_LABEL}` : ''}</option>)}
           </select>
           <p className="mt-2 text-xs text-slate-500">{loading ? 'Loading active staff…' : availableStaff.length ? 'Only active staff accounts with the Staff role are available for assignment.' : 'No active staff accounts with the Staff role are available to assign.'}</p>
+          {!loading && availableStaff.some((member) => member.profilePending) && (
+            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              Accounts that have not been signed in yet show as {PENDING_PROFILE_LABEL}. Their real name appears everywhere once they complete their profile.
+            </p>
+          )}
         </div>
 
         <div className="mt-7 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} disabled={saving} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 disabled:opacity-50">Cancel</button>
           <button type="submit" disabled={saving || loading || !selectedId || availableStaff.length === 0} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#071A52] px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">
             {saving || loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-            {loading ? 'Loading staff…' : saving ? 'Saving assignment…' : classItem.formMaster ? 'Update form master' : 'Assign form master'}
+            {loading ? 'Loading staff…' : saving ? 'Saving assignment…' : classItem.formMasterId ? 'Update form master' : 'Assign form master'}
           </button>
         </div>
       </form>
@@ -503,19 +526,13 @@ function extractClasses(response) {
   const records = Array.isArray(data.classes) ? data.classes : data.class ? [data.class] : [];
   return records.map((item) => {
     const formMaster = item.formMaster;
+    const formMasterPending = isProfilePending(formMaster);
     const formMasterName =
       typeof formMaster === 'string'
         ? formMaster
-        : [
-            formMaster?.firstName,
-            formMaster?.surName ?? formMaster?.lastName,
-          ]
-            .filter(Boolean)
-            .join(' ') ||
-          formMaster?.fullName ||
-          formMaster?.name ||
-          item.formMasterName ||
-          '';
+        : formMaster
+          ? getStaffDisplayName(formMaster)
+          : item.formMasterName || '';
 
     return {
       ...item,
@@ -527,6 +544,7 @@ function extractClasses(response) {
         item.formMasterId ||
         '',
       formMaster: formMasterName,
+      formMasterPending,
     };
   }).filter((item) => item.classLevel);
 }
@@ -537,11 +555,8 @@ function extractStaff(response) {
     .filter((member) => member.status === 'ACTIVE' && member.role === 'STAFF')
     .map((member) => ({
       id: member.id ?? member._id ?? member.staffId ?? '',
-      name: [member.firstName, member.surName ?? member.lastName]
-        .filter(Boolean)
-        .join(' ')
-        .trim(),
-      role: member.role || '',
+      name: getStaffDisplayName(member),
+      profilePending: isProfilePending(member),
     }))
     .filter((member) => member.id && member.name);
 }
