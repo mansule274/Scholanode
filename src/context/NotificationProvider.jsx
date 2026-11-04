@@ -12,6 +12,12 @@ import {
   getNotificationSocket,
 } from '../services/notificationSocket';
 import { useUserContext } from './UserContext';
+import {
+  playAudioChime,
+  unlockAudioOnFirstInteraction,
+} from '../utils/sounds';
+
+const SOUND_PREFERENCE_KEY = 'scholanode_notification_sound';
 
 const emptyPagination = {
   totalItems: 0,
@@ -28,7 +34,33 @@ export default function NotificationProvider({ children }) {
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState('');
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_PREFERENCE_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const requestIdRef = useRef(0);
+  const unreadCountRef = useRef(0);
+
+  useEffect(() => {
+    unreadCountRef.current = unreadCount;
+  }, [unreadCount]);
+
+  const toggleNotificationSound = useCallback(() => {
+    setSoundEnabledState((current) => {
+      const next = !current;
+
+      try {
+        localStorage.setItem(SOUND_PREFERENCE_KEY, next ? 'on' : 'off');
+      } catch {
+        // Storage unavailable; the preference just will not persist.
+      }
+
+      return next;
+    });
+  }, []);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -107,12 +139,22 @@ export default function NotificationProvider({ children }) {
 
     const socket = getNotificationSocket();
 
+    unlockAudioOnFirstInteraction();
+
     const handleCountUpdated = (payload) => {
       const nextCount = Number(payload?.unreadCount);
 
-      if (Number.isFinite(nextCount)) {
-        setUnreadCount(nextCount > 0 ? nextCount : 0);
+      if (!Number.isFinite(nextCount)) return;
+
+      const normalized = nextCount > 0 ? nextCount : 0;
+
+      // Only sound for genuinely new notifications. Reconnect and list
+      // refreshes keep the count unchanged or lower it.
+      if (soundEnabled && normalized > unreadCountRef.current) {
+        playAudioChime('success');
       }
+
+      setUnreadCount(normalized);
     };
 
     const handleConnect = () => {
@@ -136,7 +178,7 @@ export default function NotificationProvider({ children }) {
       socket.off('notification_count_updated', handleCountUpdated);
       socket.off('connect', handleConnect);
     };
-  }, [isAuthenticated, refreshUnreadCount]);
+  }, [isAuthenticated, refreshUnreadCount, soundEnabled]);
 
   // Counts can change while the socket is offline, so refresh on refocus.
   useEffect(() => {
@@ -175,6 +217,8 @@ export default function NotificationProvider({ children }) {
         hasLoaded,
         refreshUnreadCount,
         loadNotifications,
+        soundEnabled,
+        toggleNotificationSound,
       }}
     >
       {children}

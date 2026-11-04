@@ -25,6 +25,7 @@ import {
 import jsQR from "jsqr";
 import { useUserContext } from "../../../context/UserContext";
 import { recordGateScan, verifyGateStudent } from "./gateScannerApi";
+import { playAudioChime } from "../../../utils/sounds";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -292,39 +293,6 @@ function StudentDetailsModal({ student, relation, schoolName, onClose }) {
       </div>
     </div>
   );
-}
-
-function playAudioChime(type = "success") {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    if (type === "success") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(659.25, ctx.currentTime);
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.3);
-    } else {
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(370, ctx.currentTime);
-      osc.frequency.setValueAtTime(280, ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.35);
-    }
-  } catch {
-    // Audio synthesis blocked by autoplay policy
-  }
 }
 
 export default function VerifyStudent() {

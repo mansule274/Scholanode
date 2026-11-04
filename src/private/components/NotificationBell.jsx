@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Loader2,
   RefreshCw,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 import useNotifications from '../../context/useNotifications';
@@ -28,6 +30,8 @@ export default function NotificationBell() {
     hasLoaded,
     loadNotifications,
     refreshUnreadCount,
+    soundEnabled,
+    toggleNotificationSound,
   } = useNotifications();
 
   useEffect(() => {
@@ -112,13 +116,34 @@ export default function NotificationBell() {
               </p>
             </div>
 
-            {listLoading && (
-              <RefreshCw
-                size={15}
-                className="animate-spin text-slate-400"
-                aria-hidden="true"
-              />
-            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {listLoading && (
+                <RefreshCw
+                  size={15}
+                  className="animate-spin text-slate-400"
+                  aria-hidden="true"
+                />
+              )}
+
+              <button
+                type="button"
+                onClick={toggleNotificationSound}
+                title={soundEnabled ? 'Mute notification sound' : 'Enable notification sound'}
+                aria-label={
+                  soundEnabled
+                    ? 'Mute notification sound'
+                    : 'Enable notification sound'
+                }
+                aria-pressed={soundEnabled}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              >
+                {soundEnabled ? (
+                  <Volume2 size={15} className="text-emerald-600" />
+                ) : (
+                  <VolumeX size={15} />
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto sm:max-h-[22rem] sm:flex-none">
