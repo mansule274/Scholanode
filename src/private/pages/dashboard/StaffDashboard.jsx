@@ -1,815 +1,573 @@
-
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
-  ShieldCheck,
-  MapPin,
-  Clock3,
-  ScanLine,
-  UserRoundPlus,
-  AlertTriangle,
-  Bell,
+  AlertCircle,
   ArrowUpRight,
+  Bell,
+  Briefcase,
+  CalendarDays,
+  ClipboardCheck,
+  History,
+  Megaphone,
+  MessageSquareText,
+  RefreshCw,
+  ScanLine,
   Users,
-  CheckCircle2,
-  CircleAlert,
-  ClipboardList,
-  ChevronRight,
-  Activity,
-  DoorOpen,
-  ShieldAlert,
-  X,
 } from "lucide-react";
+
+import { useUserContext } from "../../../context/UserContext";
+import { formatNotificationTime } from "../../../utils/notifications";
+import { getRoleLabel } from "../../../utils/roles";
+import { isProfilePending } from "../../../utils/staffDisplay";
 import { getGreeting } from "./dashboardGreeting";
 import SchoolComplaintCard from "./SchoolComplaintCard";
+import { getStaffDashboard } from "./staffDashboardApi";
 
-const mockActivity = [
-  {
-    id: 1,
-    type: "student",
-    title: "Student arrival verified",
-    description: "Amina Yusuf · Primary 5A",
-    time: "04:52 PM",
-    status: "Verified",
-  },
-  {
-    id: 2,
-    type: "visitor",
-    title: "Visitor registered",
-    description: "Parent meeting · Host notification sent",
-    time: "04:48 PM",
-    status: "Awaiting host",
-  },
-  {
-    id: 3,
-    type: "student",
-    title: "Student arrival verified",
-    description: "Ibrahim Musa · Primary 5A",
-    time: "04:46 PM",
-    status: "Verified",
-  },
-  {
-    id: 4,
-    type: "incident",
-    title: "Safety concern reported",
-    description: "Main entrance · Awaiting review",
-    time: "04:40 PM",
-    status: "Needs review",
-  },
-];
+const todayLabel = new Date().toLocaleDateString([], {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
 
-const activityStyles = {
-  student: {
-    icon: ScanLine,
-    color: "text-blue-700 bg-blue-50",
+const REGISTER_STATES = {
+  NOT_STARTED: {
+    headline: "Not taken yet",
+    hint: "Your register is still open for today.",
+    cta: "Take attendance",
   },
-  visitor: {
-    icon: UserRoundPlus,
-    color: "text-cyan-700 bg-cyan-50",
+  DRAFT: {
+    headline: "Saved as a draft",
+    hint: "Finish marking the rest and submit before the day ends.",
+    cta: "Continue register",
   },
-  incident: {
-    icon: ShieldAlert,
-    color: "text-amber-700 bg-amber-50",
+  SUBMITTED: {
+    headline: "Submitted",
+    hint: "Locked for today. Open it only if something needs correcting.",
+    cta: "Review register",
   },
 };
 
-function SectionHeading({ title, subtitle, action, onAction }) {
+const COMPLAINT_TONES = {
+  SUBMITTED: "bg-amber-50 text-amber-700",
+  IN_PROGRESS: "bg-blue-50 text-blue-700",
+  RESOLVED: "bg-emerald-50 text-emerald-700",
+  CLOSED: "bg-slate-100 text-slate-600",
+};
+
+const VIEW_ALL_CLASS =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-[#071A52] transition hover:border-blue-300 hover:bg-blue-50";
+
+function complaintLabel(status) {
+  return String(status || "")
+    .toLowerCase()
+    .replace(/_/g, " ");
+}
+
+function SectionCard({ icon: Icon, eyebrow, title, hint, action, children }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <div>
-        <h2 className="text-base font-bold text-slate-900">{title}</h2>
-        {subtitle && (
-          <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-        )}
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <Icon size={14} />
+            {eyebrow}
+          </div>
+          <h2 className="mt-1.5 text-lg font-extrabold text-[#071A52]">{title}</h2>
+          {hint && <p className="mt-0.5 text-sm leading-5 text-slate-500">{hint}</p>}
+        </div>
+
+        {action}
       </div>
 
-      {action && (
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function SectionNotice({ text }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5">
+      <p className="text-sm leading-5 text-slate-600">{text}</p>
+    </div>
+  );
+}
+
+function SectionError({ text, onRetry }) {
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50/90 px-4 py-3.5">
+      <div className="flex items-start gap-2.5">
+        <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
+        <p className="text-sm leading-5 text-rose-700">{text}</p>
+      </div>
+      {onRetry && (
         <button
-          onClick={onAction}
-          className="shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-900"
+          type="button"
+          onClick={onRetry}
+          className="mt-3 cursor-pointer rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50"
         >
-          {action}
-          <ChevronRight size={16} />
+          Try again
         </button>
       )}
     </div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, description, iconStyle }) {
+function SkeletonRows({ rows = 2 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-            {value}
-          </p>
-        </div>
-        <div className={`rounded-xl p-3 ${iconStyle}`}>
-          <Icon size={21} />
-        </div>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-slate-500">{description}</p>
+    <div aria-hidden="true" className="space-y-2">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className="h-11 animate-pulse rounded-lg bg-slate-100" />
+      ))}
     </div>
   );
 }
 
-export default function SecurityDashboard() {
+function QuickAction({ icon: Icon, title, hint, to }) {
+  return (
+    <Link
+      to={to}
+      className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-800">
+        <Icon size={19} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-[#071A52]">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-slate-500">{hint}</span>
+      </span>
+      <ArrowUpRight
+        size={15}
+        className="ml-auto shrink-0 text-blue-700 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+      />
+    </Link>
+  );
+}
+
+export default function StaffDashboard() {
   const navigate = useNavigate();
+  const { user, school } = useUserContext();
 
-  const [showVisitorModal, setShowVisitorModal] = useState(false);
-  const [showIncidentModal, setShowIncidentModal] = useState(false);
-  const [visitorName, setVisitorName] = useState("");
-  const [visitorPurpose, setVisitorPurpose] = useState("Parent meeting");
-  const [visitorHost, setVisitorHost] = useState("");
-  const [incidentDescription, setIncidentDescription] = useState("");
-  const [notice, setNotice] = useState("");
+  const fullName = useMemo(
+    () =>
+      isProfilePending(user)
+        ? ""
+        : [user?.firstName, user?.surName].filter(Boolean).join(" ").trim(),
+    [user]
+  );
 
-  // Demo values. Replace these with authenticated user and school data later.
-  const [activity, setActivity] = useState(mockActivity);
-  const [incidents, setIncidents] = useState([
-    {
-      id: 1,
-      title: "Safety concern reported",
-      location: "Main entrance",
-      status: "Awaiting review",
-    },
-  ]);
+  const schoolName = school?.schoolName || school?.name || "your school";
+  const roleLabel = getRoleLabel(user?.role) || "Staff";
+  const className = [user?.formClass?.classLevel, user?.formClass?.arm].filter(Boolean).join(" ");
+  const isFormMaster = Boolean(user?.isFormMaster);
+  const canScanStudents = Boolean(user?.canScanStudents);
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "Visitor awaiting host",
-      description: "Mr. Abdullahi is waiting for the School Administrator.",
-    },
-  ]);
+  const [sections, setSections] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
 
-  const [visitorCount, setVisitorCount] = useState(3);
-  const [verifiedToday] = useState(24);
+  useEffect(() => {
+    let cancelled = false;
 
-  // Optional integration with the existing login storage.
-  const storedUser = (() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "{}") || {};
-    } catch {
-      return {};
-    }
-  })();
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
 
-  const officerName =
-    storedUser.firstName || storedUser.name || "Security Officer";
+      try {
+        const payload = await getStaffDashboard({ isFormMaster, canScanStudents });
+        if (cancelled) return;
 
-  const schoolName =
-    storedUser.school?.name ||
-    storedUser.schoolName ||
-    "ScholaNode School";
+        setSections(payload);
+      } catch (requestError) {
+        if (cancelled) return;
 
-  function addVisitor(event) {
-    event.preventDefault();
+        setError(
+          requestError?.response?.data?.message ||
+            "We could not load your dashboard. Check your connection and try again."
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 0);
 
-    if (!visitorName.trim() || !visitorHost.trim()) return;
-
-    const visitor = {
-      id: Date.now(),
-      name: visitorName.trim(),
-      purpose: visitorPurpose,
-      host: visitorHost.trim(),
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
     };
+  }, [canScanStudents, isFormMaster, refreshToken]);
 
-    setVisitorCount((current) => current + 1);
-    setNotifications((current) => [
-      {
-        id: Date.now(),
-        title: "Visitor awaiting host",
-        description: `${visitor.name} is waiting for ${visitor.host}.`,
-      },
-      ...current,
-    ]);
-    setActivity((current) => [
-      {
-        id: Date.now(),
-        type: "visitor",
-        title: "Visitor registered",
-        description: `${visitor.name} · ${visitor.purpose}`,
-        time: visitor.time,
-        status: "Awaiting host",
-      },
-      ...current,
-    ]);
+  const today = sections?.today?.ok && sections.today.available !== false ? sections.today : null;
+  const history =
+    sections?.history?.ok && sections.history.available !== false ? sections.history : null;
+  const gate = sections?.gate?.ok ? sections.gate : null;
+  const unread = sections?.unread?.ok ? sections.unread.count : null;
+  const complaints = sections?.complaints?.ok ? sections.complaints : null;
 
-    setNotice(
-      `Demo visitor registered. ${visitor.host} has been added to the mock notification queue. No real notification was sent.`
-    );
-    setVisitorName("");
-    setVisitorHost("");
-    setShowVisitorModal(false);
-  }
+  const registerState = today ? REGISTER_STATES[today.status] ?? REGISTER_STATES.NOT_STARTED : null;
+  const attendanceRate = history?.summary?.attendanceRate;
+  const totalRegisters = history?.summary?.totalRegisters ?? 0;
 
-  function addIncident(event) {
-    event.preventDefault();
-
-    if (!incidentDescription.trim()) return;
-
-    const incident = {
-      id: Date.now(),
-      title: incidentDescription.trim(),
-      location: "Main entrance",
-      status: "Awaiting review",
-    };
-
-    setIncidents((current) => [incident, ...current]);
-    setActivity((current) => [
-      {
-        id: Date.now(),
-        type: "incident",
-        title: "Security incident reported",
-        description: incident.title,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        status: "Needs review",
-      },
-      ...current,
-    ]);
-
-    setNotice(
-      "Demo incident recorded locally. Connect the backend and notification service to notify school leadership."
-    );
-    setIncidentDescription("");
-    setShowIncidentModal(false);
-  }
-
-  function openVisitors() {
-    setShowVisitorModal(true);
-  }
+  // Announcements, complaints, profile and settings already have a section
+  // below or a permanent sidebar entry, so only the day-to-day jobs are
+  // offered as tiles here.
+  const quickActions = [
+    isFormMaster && {
+      to: "/attendance",
+      icon: ClipboardCheck,
+      title: "Take attendance",
+      hint: "Mark today's register for your class.",
+    },
+    isFormMaster && {
+      to: "/my-class",
+      icon: Users,
+      title: "My class",
+      hint: "The pupils your school has placed with you.",
+    },
+    canScanStudents && {
+      to: "/verify-student",
+      icon: ScanLine,
+      title: "Verify student",
+      hint: "Scan a badge or search an admission number.",
+    },
+    canScanStudents && {
+      to: "/scan-history",
+      icon: History,
+      title: "Gate scan history",
+      hint: "Students recorded at the gate.",
+    },
+  ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-        {/* Welcome and assigned gate */}
-        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] text-white shadow-sm">
-          <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div>
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-blue-100">
-                <ShieldCheck size={15} />
-                Security operations
-              </div>
-
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                {getGreeting()}, {officerName}
-              </h1>
-
-              <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
-                Your security overview for today. Monitor gate activity,
-                manage visitors, and keep school leadership informed.
-              </p>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  onClick={() => navigate("/verify-student")}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-[#071A52] transition hover:bg-blue-50"
-                >
-                  <ScanLine size={18} />
-                  Verify student
-                </button>
-
-                <button
-                  onClick={openVisitors}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
-                >
-                  <UserRoundPlus size={18} />
-                  Register visitor
-                </button>
-              </div>
+    <div className="min-h-full bg-slate-50/70 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700">
+              <Briefcase size={14} />
+              Staff workspace
             </div>
-
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-5 lg:min-w-64">
-              <div className="flex items-center gap-2 text-sm text-blue-100">
-                <MapPin size={17} />
-                Assigned gate point
-              </div>
-              <p className="mt-3 text-xl font-bold">Main Entrance</p>
-              <p className="mt-1 text-sm text-blue-100">{schoolName}</p>
-              <div className="mt-4 flex items-center gap-2 border-t border-white/15 pt-4 text-sm">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Assigned duty point
-              </div>
-            </div>
+            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071A52] sm:text-3xl">
+              {getGreeting()}
+              {fullName ? `, ${fullName}` : ""}
+            </h1>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+              <span>{schoolName}</span>
+              <span className="h-1 w-1 rounded-full bg-slate-300" />
+              <span>{roleLabel}</span>
+              {className && (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-slate-300" />
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-800">
+                    {className}
+                  </span>
+                </>
+              )}
+              <span className="h-1 w-1 rounded-full bg-slate-300" />
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays size={13} />
+                {todayLabel}
+              </span>
+            </p>
           </div>
-        </section>
 
-        {/* Demo notice */}
-        {notice && (
-          <div
-            role="status"
-            className="flex items-start justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+          <button
+            type="button"
+            onClick={() => setRefreshToken((value) => value + 1)}
+            disabled={loading}
+            aria-label="Refresh your dashboard"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <p>{notice}</p>
-            <button
-              onClick={() => setNotice("")}
-              aria-label="Dismiss notice"
-              className="shrink-0 rounded-md p-1 hover:bg-blue-100"
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </header>
+
+        {error && (
+          <SectionError text={error} onRetry={() => setRefreshToken((value) => value + 1)} />
+        )}
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <SectionCard
+            icon={ClipboardCheck}
+            eyebrow="Today"
+            title={isFormMaster ? "Class attendance" : "Attendance and class tools"}
+            hint={
+              isFormMaster
+                ? className
+                  ? `Register for ${className}.`
+                  : "Register for your class."
+                : undefined
+            }
+            action={
+              isFormMaster && today ? (
+                <button
+                  type="button"
+                  onClick={() => navigate("/attendance")}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-[#071A52] to-[#123A8F] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:brightness-110"
+                >
+                  {registerState?.cta}
+                  <ArrowUpRight size={14} />
+                </button>
+              ) : null
+            }
+          >
+            {loading && !sections ? (
+              <SkeletonRows rows={3} />
+            ) : !isFormMaster ? (
+              <SectionNotice text="Your school has not assigned you a class to register yet. Attendance, your class list and the related quick actions appear here the moment your school makes you a class teacher." />
+            ) : sections?.today && !sections.today.ok ? (
+              <SectionError
+                text={sections.today.message}
+                onRetry={() => setRefreshToken((value) => value + 1)}
+              />
+            ) : !registerState ? (
+              <SectionNotice text="Attendance for your class could not be reached right now. Use Refresh to try again." />
+            ) : (
+              <>
+                <p className="text-3xl font-black tracking-tight text-[#071A52] sm:text-4xl">
+                  {registerState.headline}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">{registerState.hint}</p>
+
+                {today?.registerId && today.totalStudents > 0 && (
+                  <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {today.markedStudents} of {today.totalStudents} pupils marked
+                  </p>
+                )}
+
+                {today?.registerId && today.totalStudents === 0 && (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Your class roster is empty. Ask your school office to place pupils in{" "}
+                    {className || "your class"} before taking attendance.
+                  </p>
+                )}
+
+                {!today?.registerId && (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Your full class list opens as soon as you start today's register.
+                  </p>
+                )}
+
+                {(attendanceRate !== null && attendanceRate !== undefined) ||
+                totalRegisters > 0 ? (
+                  <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">
+                    <span className="font-bold text-[#071A52]">
+                      {attendanceRate === null || attendanceRate === undefined
+                        ? "No rate yet"
+                        : `${attendanceRate}%`}
+                    </span>{" "}
+                    attendance across {totalRegisters}{" "}
+                    {totalRegisters === 1 ? "register" : "registers"} this term.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </SectionCard>
+
+          {canScanStudents ? (
+            <Link
+              to="/verify-student"
+              className="group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] p-5 text-left text-white shadow-sm transition hover:brightness-110"
             >
-              <X size={16} />
+              <div className="pointer-events-none absolute -right-10 -top-14 h-44 w-44 rounded-full border-[28px] border-white/[0.06]" />
+
+              <div className="relative">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/10">
+                  <ScanLine size={21} />
+                </span>
+                <h2 className="mt-4 text-lg font-extrabold">Gate duties</h2>
+                <p className="mt-1 max-w-xs text-xs leading-5 text-blue-100">
+                  {gate?.ok
+                    ? `${gate.todayArrivalCount} ${
+                        gate.todayArrivalCount === 1 ? "student has" : "students have"
+                      } arrived at the gate today.`
+                    : "Record arrivals and review who has already come through."}
+                </p>
+              </div>
+
+              <span className="relative mt-5 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-200">
+                Verify a student
+                <ArrowUpRight
+                  size={14}
+                  className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                />
+              </span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate(isFormMaster ? "/my-class" : "/announcements")}
+              className="group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#071A52] via-[#0A2463] to-[#123A8F] p-5 text-left text-white shadow-sm transition hover:brightness-110"
+            >
+              <div className="pointer-events-none absolute -right-10 -top-14 h-44 w-44 rounded-full border-[28px] border-white/[0.06]" />
+
+              <div className="relative">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/10">
+                  {isFormMaster ? <Users size={21} /> : <Megaphone size={21} />}
+                </span>
+                <h2 className="mt-4 text-lg font-extrabold">
+                  {isFormMaster ? className || "My class" : "School announcements"}
+                </h2>
+                <p className="mt-1 max-w-xs text-xs leading-5 text-blue-100">
+                  {isFormMaster
+                    ? "See the pupils placed with you, their details and their attendance record."
+                    : "Keep up with what your school sends to staff."}
+                </p>
+              </div>
+
+              <span className="relative mt-5 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-200">
+                {isFormMaster ? "Open my class" : "Read announcements"}
+                <ArrowUpRight
+                  size={14}
+                  className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                />
+              </span>
             </button>
+          )}
+        </div>
+
+        {quickActions.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {quickActions.map((action) => (
+              <QuickAction key={action.to} {...action} />
+            ))}
           </div>
         )}
 
-        {/* General overview */}
-        <section>
-          <SectionHeading
-            title="Today's overview"
-            subtitle="A quick summary of security activity."
-          />
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              icon={CheckCircle2}
-              label="Students verified"
-              value={verifiedToday}
-              description="Gate verification records today"
-              iconStyle="bg-blue-50 text-blue-700"
-            />
-            <StatCard
-              icon={Users}
-              label="Visitors registered"
-              value={visitorCount}
-              description="Visitors recorded today"
-              iconStyle="bg-cyan-50 text-cyan-700"
-            />
-            <StatCard
-              icon={Clock3}
-              label="Awaiting attention"
-              value={notifications.length}
-              description="Items needing follow-up"
-              iconStyle="bg-amber-50 text-amber-700"
-            />
-            <StatCard
-              icon={ShieldAlert}
-              label="Open incidents"
-              value={incidents.length}
-              description="Reports awaiting review"
-              iconStyle="bg-rose-50 text-rose-700"
-            />
-          </div>
-        </section>
-
-        {/* Quick actions */}
-        <section>
-          <SectionHeading
-            title="Security tasks"
-            subtitle="Start the task you need without searching through the dashboard."
-          />
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <button
-              onClick={() => navigate("/verify-student")}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-blue-300 hover:shadow-sm"
-            >
-              <div className="rounded-xl bg-blue-50 p-3 text-blue-700">
-                <ScanLine size={22} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-slate-900">Verify student</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  Scan a badge or search an admission number.
-                </p>
-                <span className="mt-3 inline-flex items-center text-sm font-semibold text-blue-700">
-                  Open verifier <ArrowUpRight size={15} className="ml-1" />
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={openVisitors}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-cyan-300 hover:shadow-sm"
-            >
-              <div className="rounded-xl bg-cyan-50 p-3 text-cyan-700">
-                <UserRoundPlus size={22} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-slate-900">Register visitor</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  Record the visitor, purpose, and intended host.
-                </p>
-                <span className="mt-3 inline-flex items-center text-sm font-semibold text-cyan-700">
-                  Start registration <ArrowUpRight size={15} className="ml-1" />
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setShowIncidentModal(true)}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-amber-300 hover:shadow-sm"
-            >
-              <div className="rounded-xl bg-amber-50 p-3 text-amber-700">
-                <AlertTriangle size={22} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-slate-900">Report incident</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  Record a safety concern for follow-up.
-                </p>
-                <span className="mt-3 inline-flex items-center text-sm font-semibold text-amber-700">
-                  Report concern <ArrowUpRight size={15} className="ml-1" />
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate("/scan-history")}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm"
-            >
-              <div className="rounded-xl bg-slate-100 p-3 text-slate-700">
-                <ClipboardList size={22} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-slate-900">Scan history</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  Review and search previous student scans.
-                </p>
-                <span className="mt-3 inline-flex items-center text-sm font-semibold text-slate-700">
-                  View records <ArrowUpRight size={15} className="ml-1" />
-                </span>
-              </div>
-            </button>
-          </div>
-        </section>
-
-        {/* Attention and responsibilities */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-3">
-            <SectionHeading
-              title="Needs attention"
-              subtitle="Follow up on these items during your duty."
-              action="View visitors"
-              onAction={openVisitors}
-            />
-
-            {notifications.length === 0 && incidents.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 p-6 text-center">
-                <CheckCircle2 className="mx-auto text-emerald-600" size={30} />
-                <p className="mt-3 font-semibold text-slate-800">
-                  Nothing needs attention
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  New security tasks will appear here.
-                </p>
-              </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SectionCard
+            icon={Megaphone}
+            eyebrow="From your school"
+            title="Latest announcements"
+            action={
+              <Link to="/announcements" className={VIEW_ALL_CLASS}>
+                View all
+                <ArrowUpRight size={13} />
+              </Link>
+            }
+          >
+            {loading && !sections ? (
+              <SkeletonRows />
+            ) : !sections?.announcements?.ok ? (
+              <SectionError
+                text={sections?.announcements?.message}
+                onRetry={() => setRefreshToken((value) => value + 1)}
+              />
+            ) : sections.announcements.items.length === 0 ? (
+              <SectionNotice text="No announcements have been sent to you yet." />
             ) : (
-              <div className="space-y-3">
-                {notifications.slice(0, 3).map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/60 p-4"
-                  >
-                    <div className="rounded-lg bg-amber-100 p-2 text-amber-700">
-                      <Bell size={18} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-900">
-                        {item.title}
+              <>
+                <ul className="divide-y divide-slate-100">
+                  {sections.announcements.items.map((announcement) => (
+                    <li key={announcement.id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-bold text-[#071A52]">{announcement.title}</p>
+                        <span className="shrink-0 text-xs text-slate-400">
+                          {formatNotificationTime(announcement.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">
+                        {announcement.message}
                       </p>
-                      <p className="mt-1 text-sm leading-5 text-slate-600">
-                        {item.description}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
-                      Pending
-                    </span>
-                  </div>
-                ))}
-
-                {incidents.slice(0, 2).map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4"
-                  >
-                    <div className="rounded-lg bg-rose-100 p-2 text-rose-700">
-                      <CircleAlert size={18} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-900">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {item.location} · {item.status}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    </li>
+                  ))}
+                </ul>
+                {sections.announcements.total > sections.announcements.items.length && (
+                  <p className="mt-3 text-xs text-slate-400">
+                    Showing {sections.announcements.items.length} of {sections.announcements.total}
+                  </p>
+                )}
+              </>
             )}
-          </section>
+          </SectionCard>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
-            <SectionHeading
-              title="Your responsibilities"
-              subtitle="Core duties at your assigned gate."
-            />
-
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="mt-0.5 rounded-lg bg-blue-50 p-2 text-blue-700">
-                  <ShieldCheck size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Verify school entry
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Check student identities and follow school gate procedures.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="mt-0.5 rounded-lg bg-cyan-50 p-2 text-cyan-700">
-                  <DoorOpen size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Manage visitors
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Record visitor details and contact the intended host.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="mt-0.5 rounded-lg bg-amber-50 p-2 text-amber-700">
-                  <Bell size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Inform school leadership
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Escalate incidents, unusual activity, and matters requiring
-                    administrative attention.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="mt-0.5 rounded-lg bg-rose-50 p-2 text-rose-700">
-                  <Activity size={18} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Maintain gate safety
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Keep entrances orderly and report safety concerns promptly.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
+          <SectionCard
+            icon={Bell}
+            eyebrow="Account activity"
+            title="Recent notifications"
+            action={
+              <Link to="/notifications" className={VIEW_ALL_CLASS}>
+                {unread > 0 && (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
+                    {unread} new
+                  </span>
+                )}
+                View all
+                <ArrowUpRight size={13} />
+              </Link>
+            }
+          >
+            {loading && !sections ? (
+              <SkeletonRows />
+            ) : !sections?.notifications?.ok ? (
+              <SectionError
+                text={sections?.notifications?.message}
+                onRetry={() => setRefreshToken((value) => value + 1)}
+              />
+            ) : sections.notifications.items.length === 0 ? (
+              <SectionNotice text="Nothing new on your account yet." />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {sections.notifications.items.map((notification) => (
+                  <li key={notification.id} className="py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-bold text-[#071A52]">{notification.title}</p>
+                      <span className="shrink-0 text-xs text-slate-400">
+                        {formatNotificationTime(notification.createdAt)}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">
+                      {notification.message}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
         </div>
 
-        {/* Short mixed activity preview */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-          <SectionHeading
-            title="Recent security activity"
-            subtitle="A short preview across security tasks."
-            action="Full scan history"
-            onAction={() => navigate("/scan-history")}
-          />
-
-          <div className="divide-y divide-slate-100">
-            {activity.slice(0, 4).map((item) => {
-              const style = activityStyles[item.type] || activityStyles.student;
-              const Icon = style.icon;
-
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 py-4 first:pt-1 last:pb-1 sm:gap-4"
+        {/* Most staff never file a complaint, so an empty list is noise rather than information. */}
+        {complaints && complaints.total > 0 && (
+          <SectionCard
+            icon={MessageSquareText}
+            eyebrow="Your requests"
+            title="Complaints you have sent"
+            hint={`${complaints.openCount} of ${complaints.total} still waiting on your school.`}
+            action={
+              <Link to="/complaints" className={VIEW_ALL_CLASS}>
+                Open complaints
+                <ArrowUpRight size={13} />
+              </Link>
+            }
+          >
+            <ul className="divide-y divide-slate-100">
+              {complaints.items.map((complaint) => (
+                <li
+                  key={complaint.id}
+                  className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
                 >
-                  <div className={`shrink-0 rounded-xl p-3 ${style.color}`}>
-                    <Icon size={19} />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {item.title}
-                    </p>
-                    <p className="mt-1 truncate text-sm text-slate-500">
-                      {item.description}
+                  <div>
+                    <p className="text-sm font-bold text-[#071A52]">{complaint.subject}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {formatNotificationTime(complaint.createdAt)}
                     </p>
                   </div>
-
-                  <div className="hidden shrink-0 text-right sm:block">
-                    <p className="text-xs text-slate-500">{item.time}</p>
-                    <p
-                      className={`mt-1 text-xs font-semibold ${
-                        item.status === "Verified"
-                          ? "text-emerald-700"
-                          : item.status === "Needs review"
-                            ? "text-rose-700"
-                            : "text-amber-700"
-                      }`}
-                    >
-                      {item.status}
-                    </p>
-                  </div>
-
-                  <span className="shrink-0 text-xs text-slate-500 sm:hidden">
-                    {item.time}
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                      COMPLAINT_TONES[complaint.status] ?? "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {complaintLabel(complaint.status)}
                   </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
 
         <SchoolComplaintCard schoolName={schoolName} />
       </div>
-
-      {/* Visitor registration demo modal */}
-      {showVisitorModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowVisitorModal(false);
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="visitor-modal-title"
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl sm:p-6"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2
-                  id="visitor-modal-title"
-                  className="text-xl font-bold text-slate-900"
-                >
-                  Register visitor
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Record who is visiting and who they need to see.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowVisitorModal(false)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X size={19} />
-              </button>
-            </div>
-
-            <form onSubmit={addVisitor} className="mt-5 space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Visitor's name
-                </label>
-                <input
-                  required
-                  value={visitorName}
-                  onChange={(event) => setVisitorName(event.target.value)}
-                  placeholder="Enter visitor's full name"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Purpose of visit
-                </label>
-                <select
-                  value={visitorPurpose}
-                  onChange={(event) => setVisitorPurpose(event.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option>Parent meeting</option>
-                  <option>Official school business</option>
-                  <option>Meeting with staff</option>
-                  <option>Delivery</option>
-                  <option>Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Intended host
-                </label>
-                <input
-                  required
-                  value={visitorHost}
-                  onChange={(event) => setVisitorHost(event.target.value)}
-                  placeholder="e.g. School Administrator"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-                <p className="mt-1.5 text-xs leading-5 text-slate-500">
-                  Demo only: this adds a local pending notification. It does
-                  not send a real message or authorize entry.
-                </p>
-              </div>
-
-              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowVisitorModal(false)}
-                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[#0A2463] px-4 py-3 text-sm font-semibold text-white hover:bg-[#123A8F]"
-                >
-                  Record visitor
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Incident reporting demo modal */}
-      {showIncidentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="incident-modal-title"
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl sm:p-6"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2
-                  id="incident-modal-title"
-                  className="text-xl font-bold text-slate-900"
-                >
-                  Report security incident
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Describe the issue for school leadership to review.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowIncidentModal(false)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X size={19} />
-              </button>
-            </div>
-
-            <form onSubmit={addIncident} className="mt-5 space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Incident details
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  value={incidentDescription}
-                  onChange={(event) =>
-                    setIncidentDescription(event.target.value)
-                  }
-                  placeholder="Describe what happened, where, and any immediate safety concerns..."
-                  className="w-full resize-y rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <p className="text-xs leading-5 text-slate-500">
-                Demo only: the report is saved in this page's local state.
-                No real alert is sent to school leadership.
-              </p>
-
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowIncidentModal(false)}
-                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[#0A2463] px-4 py-3 text-sm font-semibold text-white hover:bg-[#123A8F]"
-                >
-                  Record incident
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
