@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   Download,
   FileCheck2,
   Filter,
   History,
   Info,
+  Loader2,
   LockKeyhole,
   Pencil,
   RotateCcw,
@@ -20,259 +24,28 @@ import {
   UserX,
   Users,
   X,
-  AlertTriangle,
-  Loader2,
 } from "lucide-react";
 import {
   createTodayAttendance,
+  getAttendanceRegister,
+  getMyAttendanceHistory,
   getTodayAttendance,
   saveAttendanceDraft as saveAttendanceDraftRequest,
   submitAttendance as submitAttendanceRequest,
 } from "./attendanceApi";
-import { useUserContext } from "../../../context/UserContext";
 import ProfilePendingBadge from "../../components/ProfilePendingBadge";
 import {
   PENDING_PROFILE_HINT,
   getStaffDisplayName,
   isProfilePending,
 } from "../../../utils/staffDisplay";
+import { downloadFile, toCsv } from "../../../utils/csv";
+import { collectAllPages } from "../../../utils/pagedExport";
 
-const getLocalToday = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
+const ALL_PERIODS = "ALL";
+const HISTORY_DEBOUNCE_MS = 350;
 
-const TODAY = getLocalToday();
-const CURRENT_SESSION = "2026/2027";
-const CURRENT_TERM = "FIRST_TERM";
-const CLASS_NAME = "Primary 5A";
-const ATTENDANCE_BACKUP_PREFIX = "scholanode:attendance-backup:";
-
-const MOCK_SESSIONS = [
-  {
-    id: "2026/2027",
-    label: "2026/2027",
-    terms: [
-      {
-        id: "FIRST_TERM",
-        name: "First Term",
-        startDate: "2026-09-14",
-        endDate: "2026-12-18",
-      },
-      {
-        id: "SECOND_TERM",
-        name: "Second Term",
-        startDate: "2027-01-04",
-        endDate: "2027-04-02",
-      },
-      {
-        id: "THIRD_TERM",
-        name: "Third Term",
-        startDate: "2027-04-26",
-        endDate: "2027-07-23",
-      },
-    ],
-  },
-  {
-    id: "2025/2026",
-    label: "2025/2026",
-    terms: [
-      {
-        id: "FIRST_TERM",
-        name: "First Term",
-        startDate: "2025-09-15",
-        endDate: "2025-12-19",
-      },
-      {
-        id: "SECOND_TERM",
-        name: "Second Term",
-        startDate: "2026-01-05",
-        endDate: "2026-04-03",
-      },
-      {
-        id: "THIRD_TERM",
-        name: "Third Term",
-        startDate: "2026-04-20",
-        endDate: "2026-07-24",
-      },
-    ],
-  },
-];
-
-const INITIAL_STUDENTS = [
-  {
-    id: "STU001",
-    admissionNumber: "SN/2026/001",
-    firstName: "Amina",
-    surname: "Yusuf",
-    gender: "Female",
-  },
-  {
-    id: "STU002",
-    admissionNumber: "SN/2026/002",
-    firstName: "Ibrahim",
-    surname: "Musa",
-    gender: "Male",
-  },
-  {
-    id: "STU003",
-    admissionNumber: "SN/2026/003",
-    firstName: "Fatima",
-    surname: "Abdullahi",
-    gender: "Female",
-  },
-  {
-    id: "STU004",
-    admissionNumber: "SN/2026/004",
-    firstName: "Yusuf",
-    surname: "Bello",
-    gender: "Male",
-  },
-  {
-    id: "STU005",
-    admissionNumber: "SN/2026/005",
-    firstName: "Maryam",
-    surname: "Sani",
-    gender: "Female",
-  },
-  {
-    id: "STU006",
-    admissionNumber: "SN/2026/006",
-    firstName: "Usman",
-    surname: "Garba",
-    gender: "Male",
-  },
-  {
-    id: "STU007",
-    admissionNumber: "SN/2026/007",
-    firstName: "Zainab",
-    surname: "Ahmed",
-    gender: "Female",
-  },
-  {
-    id: "STU008",
-    admissionNumber: "SN/2026/008",
-    firstName: "Abdullahi",
-    surname: "Isah",
-    gender: "Male",
-  },
-  {
-    id: "STU009",
-    admissionNumber: "SN/2026/009",
-    firstName: "Hauwa",
-    surname: "Suleiman",
-    gender: "Female",
-  },
-  {
-    id: "STU010",
-    admissionNumber: "SN/2026/010",
-    firstName: "Mustapha",
-    surname: "Lawal",
-    gender: "Male",
-  },
-];
-
-const MOCK_HISTORY = [
-  {
-    id: "HIST001",
-    date: "2026-10-16",
-    session: "2026/2027",
-    term: "FIRST_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 8,
-    absent: 1,
-    unconfirmed: 1,
-    status: "DRAFT",
-    savedAt: "2026-10-16T09:10:00",
-  },
-  {
-    id: "HIST002",
-    date: "2026-10-15",
-    session: "2026/2027",
-    term: "FIRST_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 9,
-    absent: 1,
-    unconfirmed: 0,
-    status: "SUBMITTED",
-    savedAt: "2026-10-15T09:05:00",
-    submittedAt: "2026-10-15T09:10:00",
-  },
-  {
-    id: "HIST003",
-    date: "2026-10-14",
-    session: "2026/2027",
-    term: "FIRST_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 7,
-    absent: 2,
-    unconfirmed: 1,
-    status: "DRAFT",
-    savedAt: "2026-10-14T09:12:00",
-  },
-  {
-    id: "HIST004",
-    date: "2026-10-13",
-    session: "2026/2027",
-    term: "FIRST_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 10,
-    absent: 0,
-    unconfirmed: 0,
-    status: "SUBMITTED",
-    savedAt: "2026-10-13T08:58:00",
-    submittedAt: "2026-10-13T09:00:00",
-  },
-  {
-    id: "HIST005",
-    date: "2026-10-12",
-    session: "2026/2027",
-    term: "FIRST_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 8,
-    absent: 2,
-    unconfirmed: 0,
-    status: "SUBMITTED",
-    savedAt: "2026-10-12T09:02:00",
-    submittedAt: "2026-10-12T09:05:00",
-  },
-  {
-    id: "HIST006",
-    date: "2026-07-22",
-    session: "2025/2026",
-    term: "THIRD_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 9,
-    absent: 1,
-    unconfirmed: 0,
-    status: "SUBMITTED",
-    savedAt: "2026-07-22T09:03:00",
-    submittedAt: "2026-07-22T09:06:00",
-  },
-  {
-    id: "HIST007",
-    date: "2026-07-21",
-    session: "2025/2026",
-    term: "THIRD_TERM",
-    className: CLASS_NAME,
-    total: 10,
-    present: 8,
-    absent: 2,
-    unconfirmed: 0,
-    status: "SUBMITTED",
-    savedAt: "2026-07-21T09:08:00",
-    submittedAt: "2026-07-21T09:12:00",
-  },
-];
+const NO_EDIT_REASON = "Closed — outside the current session and term";
 
 const normalizeTodayStudents = (students) =>
   students.map((student) => {
@@ -319,161 +92,16 @@ const parseTodayAttendanceResponse = (response, requireRegister = false) => {
   };
 };
 
-const getAttendanceBackupKeys = (identity) => {
-  const identityPrefix = `${ATTENDANCE_BACKUP_PREFIX}${[
-    identity.schoolId,
-    identity.formMasterId,
-    identity.classId,
-  ]
-    .map((value) => encodeURIComponent(value))
-    .join(":")}:`;
-
-  return {
-    identityPrefix,
-    key: `${identityPrefix}${encodeURIComponent(identity.attendanceDate)}`,
-  };
-};
-
-const getAttendanceIdentity = (data, user, school) => {
-  const identity = {
-    schoolId: school?.id ?? user?.schoolId ?? data?.class?.schoolId,
-    formMasterId:
-      data?.formMaster?.id ?? data?.class?.formMasterId ?? user?.id,
-    classId: data?.class?.id,
-    attendanceDate: data?.attendanceDate,
-  };
-
-  return Object.values(identity).every(Boolean) ? identity : null;
-};
-
-const getRegisterUpdatedAt = (register) => {
-  const timestamp =
-    register?.updatedAt ??
-    register?.savedAt ??
-    register?.submittedAt ??
-    register?.createdAt;
-  const parsedTimestamp = timestamp ? Date.parse(timestamp) : NaN;
-  return Number.isFinite(parsedTimestamp) ? parsedTimestamp : null;
-};
-
-const saveAttendanceBackup = (identity, students, timestamp) => {
-  if (!identity) return;
-
-  const { key } = getAttendanceBackupKeys(identity);
-  const backup = {
-    schoolId: identity.schoolId,
-    formMasterId: identity.formMasterId,
-    classId: identity.classId,
-    attendanceDate: identity.attendanceDate,
-    students: students.map(({ studentId, status }) => ({ studentId, status })),
-    updatedAt: timestamp,
-  };
-
-  window.localStorage.setItem(key, JSON.stringify(backup));
-};
-
-const removeAttendanceBackup = (identity) => {
-  if (!identity) return;
-  const { key } = getAttendanceBackupKeys(identity);
-  window.localStorage.removeItem(key);
-};
-
-const removePreviousDateBackups = (identity) => {
-  if (!identity) return;
-  const { identityPrefix, key: currentKey } = getAttendanceBackupKeys(identity);
-  const previousKeys = [];
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (key?.startsWith(identityPrefix) && key !== currentKey) {
-      previousKeys.push(key);
-    }
-  }
-
-  previousKeys.forEach((key) => window.localStorage.removeItem(key));
-};
-
-const restoreAttendanceBackup = (identity, roster, register) => {
-  if (!identity) return null;
-
-  const { key } = getAttendanceBackupKeys(identity);
-  const serializedBackup = window.localStorage.getItem(key);
-  if (!serializedBackup) return null;
-
-  let backup;
-  try {
-    backup = JSON.parse(serializedBackup);
-  } catch {
-    window.localStorage.removeItem(key);
-    return null;
-  }
-
-  const isMatchingBackup =
-    backup?.schoolId === identity.schoolId &&
-    backup?.formMasterId === identity.formMasterId &&
-    backup?.classId === identity.classId &&
-    backup?.attendanceDate === identity.attendanceDate &&
-    Array.isArray(backup.students) &&
-    Number.isFinite(Date.parse(backup.updatedAt));
-
-  if (!isMatchingBackup) {
-    window.localStorage.removeItem(key);
-    return null;
-  }
-
-  const backupTimestamp = Date.parse(backup.updatedAt);
-  const serverTimestamp = getRegisterUpdatedAt(register);
-  if (serverTimestamp !== null && backupTimestamp <= serverTimestamp) {
-    window.localStorage.removeItem(key);
-    return null;
-  }
-
-  const backupByStudentId = new Map(
-    backup.students
-      .filter(
-        (item) =>
-          typeof item?.studentId === "string" &&
-          (item.status === null ||
-            item.status === "PRESENT" ||
-            item.status === "ABSENT")
-      )
-      .map((item) => [item.studentId, item.status])
-  );
-  const appliedStudentIds = [];
-  const mergedRoster = roster.map((student) => {
-    if (!backupByStudentId.has(student.id)) return student;
-
-    const backupStatus = backupByStudentId.get(student.id);
-    if (serverTimestamp === null && student.status !== null && student.status !== backupStatus) {
-      appliedStudentIds.push(student.id);
-      return student;
-    }
-    if (student.status === backupStatus) return student;
-
-    appliedStudentIds.push(student.id);
-    return { ...student, status: backupStatus };
-  });
-
-  if (appliedStudentIds.length === 0) {
-    window.localStorage.removeItem(key);
-    return null;
-  }
-
-  return {
-    students: mergedRoster,
-    appliedStudentIds: [...new Set(appliedStudentIds)],
-    hasServerConflict:
-      serverTimestamp === null &&
-      backup.students.some((item) => {
-        const serverStudent = roster.find((student) => student.id === item.studentId);
-        return (
-          serverStudent &&
-          serverStudent.status !== null &&
-          serverStudent.status !== item.status
-        );
-      }),
-  };
-};
+const buildHistoryParams = (filters, { page, limit }) => ({
+  sessionId:
+    filters.sessionId === ALL_PERIODS ? undefined : filters.sessionId || undefined,
+  termId: filters.termId === ALL_PERIODS ? undefined : filters.termId || undefined,
+  fromDate: filters.fromDate || undefined,
+  toDate: filters.toDate || undefined,
+  status: filters.status === ALL_PERIODS ? undefined : filters.status,
+  page,
+  limit,
+});
 
 const getClassLabel = (assignedClass) => {
   if (!assignedClass) return "No class assigned";
@@ -528,45 +156,12 @@ const formatDateTime = (dateTime) => {
   });
 };
 
-const formatTerm = (termId) => {
-  if (!termId || termId === "ALL") return "All terms";
-
-  const term = MOCK_SESSIONS.flatMap((session) => session.terms).find(
-    (item) => item.id === termId
-  );
-
-  return term?.name || termId.replace("_TERM", "").replace("_", " ");
-};
-
 const getCounts = (students) => ({
   total: students.length,
   present: students.filter((student) => student.status === "PRESENT").length,
   absent: students.filter((student) => student.status === "ABSENT").length,
   unconfirmed: students.filter((student) => !student.status).length,
 });
-
-const getUnconfirmed = (record) =>
-  record.unconfirmed ??
-  Math.max(0, record.total - record.present - record.absent);
-
-const getMockStudents = (record) => {
-  let presentLeft = record.present;
-  let absentLeft = record.absent;
-
-  return INITIAL_STUDENTS.map((student) => {
-    let status = null;
-
-    if (presentLeft > 0) {
-      status = "PRESENT";
-      presentLeft -= 1;
-    } else if (absentLeft > 0) {
-      status = "ABSENT";
-      absentLeft -= 1;
-    }
-
-    return { ...student, status };
-  });
-};
 
 function TabButton({ active, icon: Icon, children, onClick }) {
   return (
@@ -762,17 +357,19 @@ function RegisterStatusBadge({ status }) {
   );
 }
 
-function HistoryModal({
-  record,
-  onClose,
-  onContinueDraft,
-  onEditAttendance,
-}) {
-  if (!record) return null;
+// One shell serves both cases: the form master corrects a register while its
+// session and term are still current, and reviews it read-only afterwards.
+function RegisterModal({ state, classLabel, onClose, onRetry, onToggleStudent, onSave }) {
+  if (!state) return null;
 
-  const students = record.students || getMockStudents(record);
-  const counts = getCounts(students);
-  const isDraft = record.status === "DRAFT";
+  const detail = state.detail;
+  const register = detail?.attendanceRegister;
+  const canEdit = Boolean(detail?.permissions?.canEdit);
+  const counts = getCounts(state.students);
+  const hasUnmarked = counts.unconfirmed > 0;
+  const modalClassLabel = register?.class
+    ? getClassLabel(register.class)
+    : classLabel;
 
   return (
     <div
@@ -782,7 +379,7 @@ function HistoryModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="history-modal-title"
+        aria-labelledby="register-modal-title"
         className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
@@ -790,105 +387,191 @@ function HistoryModal({
           <div>
             <div className="flex items-center gap-2 text-sm font-medium text-[#123A8F]">
               <History size={17} />
-              Attendance register details
+              {canEdit ? "Review and correct register" : "Attendance register details"}
             </div>
 
             <h2
-              id="history-modal-title"
+              id="register-modal-title"
               className="mt-1 text-xl font-bold text-slate-900"
             >
-              {formatDate(record.date)}
+              {formatDate(register?.attendanceDate)}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              {record.className} · {record.session} ·{" "}
-              {formatTerm(record.term)}
+              {[
+                modalClassLabel,
+                register?.session?.sessionName,
+                register?.term?.termName,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Class information unavailable"}
             </p>
 
-            <div className="mt-3">
-              <RegisterStatusBadge status={record.status} />
-            </div>
+            {register?.status && (
+              <div className="mt-3">
+                <RegisterStatusBadge status={register.status} />
+              </div>
+            )}
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close attendance details"
+            aria-label="Close attendance register details"
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="max-h-[calc(90vh-210px)] space-y-5 overflow-y-auto p-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MiniStat label="Total students" value={counts.total} color="navy" />
-            <MiniStat label="Present" value={counts.present} color="green" />
-            <MiniStat label="Absent" value={counts.absent} color="red" />
-            <MiniStat
-              label="Unconfirmed"
-              value={counts.unconfirmed}
-              color="amber"
-            />
+        {state.loading ? (
+          <div className="flex min-h-[260px] flex-col items-center justify-center p-8 text-center">
+            <Loader2 size={26} className="animate-spin text-[#123A8F]" />
+            <p className="mt-4 font-bold text-slate-800">Loading register</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Retrieving the students recorded on this day.
+            </p>
           </div>
-
-          {isDraft && counts.unconfirmed > 0 && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-              <div>
-                <p className="font-semibold">This draft is incomplete.</p>
-                <p className="mt-1 leading-5">
-                  {counts.unconfirmed} student
-                  {counts.unconfirmed === 1 ? " remains" : "s remain"}{" "}
-                  unconfirmed. Continue this draft to finish the register.
+        ) : !detail ? (
+          <div className="p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+              <AlertTriangle size={22} />
+            </div>
+            <p className="mt-3 font-bold text-slate-900">
+              This register could not be loaded
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-rose-700">
+              {state.error}
+            </p>
+          </div>
+        ) : (
+          <div className="max-h-[calc(90vh-260px)] space-y-5 overflow-y-auto p-5">
+            {!canEdit && (
+              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+                <p className="leading-5">
+                  {detail.permissions?.reason || NO_EDIT_REASON}
                 </p>
               </div>
-            </div>
-          )}
-
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[520px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Student</th>
-                  <th className="px-4 py-3">Admission number</th>
-                  <th className="px-4 py-3">Status</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {students.map((student) => (
-                  <tr key={student.id}>
-                    <td className="px-4 py-3 font-medium text-slate-800">
-                      {student.firstName} {student.surname}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {student.admissionNumber}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusLabel status={student.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-            <p>Last saved: {formatDateTime(record.savedAt)}</p>
-            {record.status === "SUBMITTED" && (
-              <p>Submitted: {formatDateTime(record.submittedAt)}</p>
             )}
-          </div>
 
-          <p className="text-xs text-slate-500">
-            {isDraft
-              ? "This register remains a draft until all students are confirmed and attendance is submitted."
-              : "This submitted register is read-only until you explicitly choose to edit it."}
-          </p>
-        </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat label="Total students" value={counts.total} color="navy" />
+              <MiniStat label="Present" value={counts.present} color="green" />
+              <MiniStat label="Absent" value={counts.absent} color="red" />
+              <MiniStat label="Unconfirmed" value={counts.unconfirmed} color="amber" />
+            </div>
+
+            {canEdit && hasUnmarked && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold">
+                    {counts.unconfirmed} student
+                    {counts.unconfirmed === 1 ? " is" : "s are"} not marked yet.
+                  </p>
+                  <p className="mt-1 leading-5">
+                    Mark every student Present or Absent before saving this
+                    register.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {state.saveError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"
+              >
+                {state.saveError}
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Student</th>
+                    <th className="px-4 py-3">Admission number</th>
+                    <th className="px-4 py-3">
+                      {canEdit ? "Correct attendance" : "Status"}
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {state.students.map((student) => (
+                    <tr key={student.studentId}>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-slate-800">
+                          {student.firstName} {student.surname}
+                        </p>
+                        {student.gender && (
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {student.gender}
+                          </p>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-slate-500">
+                        {student.admissionNumber}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {canEdit ? (
+                          <div className="space-y-1">
+                            <AttendanceToggle
+                              status={student.status}
+                              disabled={state.saving}
+                              onChange={(status) =>
+                                onToggleStudent(student.studentId, status)
+                              }
+                            />
+                            {!student.status && (
+                              <p className="text-xs font-semibold text-amber-700">
+                                Not marked yet
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <StatusLabel status={student.status} />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {state.students.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="px-4 py-10 text-center text-sm text-slate-500"
+                      >
+                        No students are recorded on this register.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Last updated: {formatDateTime(register?.updatedAt)}
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 p-4">
+          {!state.loading && !detail && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <RotateCcw size={16} />
+              Try again
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onClose}
@@ -897,23 +580,19 @@ function HistoryModal({
             Close
           </button>
 
-          {isDraft ? (
+          {detail && canEdit && (
             <button
               type="button"
-              onClick={() => onContinueDraft(record)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123A8F]"
+              onClick={onSave}
+              disabled={state.saving || hasUnmarked}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123A8F] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Pencil size={16} />
-              Continue Draft
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onEditAttendance(record)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123A8F]"
-            >
-              <Pencil size={16} />
-              Edit Attendance
+              {state.saving ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
+              {state.saving ? "Saving…" : "Save Corrections"}
             </button>
           )}
         </div>
@@ -1000,17 +679,30 @@ function IncompleteSubmissionModal({
   );
 }
 
+function HistorySkeleton() {
+  return (
+    <div className="divide-y divide-slate-100" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="flex items-center gap-4 px-5 py-4">
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-40 animate-pulse rounded bg-slate-100" />
+            <div className="h-2.5 w-24 animate-pulse rounded bg-slate-100" />
+          </div>
+          <div className="hidden h-3 w-24 animate-pulse rounded bg-slate-100 sm:block" />
+          <div className="h-6 w-20 animate-pulse rounded-full bg-slate-100" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function FormMasterAttendance() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, school } = useUserContext();
-  const authenticatedUserId = user?.id;
-  const authenticatedSchoolId = user?.schoolId;
-  const contextSchoolId = school?.id;
+
   const [activeTab, setActiveTab] = useState("daily");
-  const [attendanceDate, setAttendanceDate] = useState(TODAY);
+  const [attendanceDate, setAttendanceDate] = useState("");
   const [students, setStudents] = useState([]);
-  const [savedRegisters, setSavedRegisters] = useState({});
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [todayLoading, setTodayLoading] = useState(true);
   const [todayError, setTodayError] = useState("");
@@ -1023,19 +715,39 @@ export default function FormMasterAttendance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [selectedHistory, setSelectedHistory] = useState(null);
   const [submissionPromptOpen, setSubmissionPromptOpen] = useState(false);
   const [isEditingSubmitted, setIsEditingSubmitted] = useState(false);
 
-  const [sessionFilter, setSessionFilter] = useState(CURRENT_SESSION);
-  const [termFilter, setTermFilter] = useState(CURRENT_TERM);
-  const [fromDate, setFromDate] = useState("2026-09-14");
-  const [toDate, setToDate] = useState(TODAY);
-  const [historySearch, setHistorySearch] = useState("");
-  const dirtyStudentIdsRef = useRef(new Set());
-  const serverStudentsRef = useRef([]);
-  const routeRef = useRef(`${location.pathname}${location.search}${location.hash}`);
+  const [historyFilters, setHistoryFilters] = useState({
+    sessionId: ALL_PERIODS,
+    termId: ALL_PERIODS,
+    fromDate: "",
+    toDate: "",
+    status: ALL_PERIODS,
+  });
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit, setHistoryLimit] = useState(10);
+  const [historyData, setHistoryData] = useState(null);
+  const [historyPagination, setHistoryPagination] = useState({
+    totalItems: 0,
+    currentPage: 1,
+    pageSize: 10,
+    totalPages: 0,
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [historyMessage, setHistoryMessage] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [registerModal, setRegisterModal] = useState(null);
+
+  const savedStatusesRef = useRef(new Map());
   const unsavedChangesRef = useRef(false);
+  const routeRef = useRef(`${location.pathname}${location.search}${location.hash}`);
+  const historyRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
 
   useEffect(() => {
     unsavedChangesRef.current = unsavedChanges;
@@ -1048,51 +760,16 @@ export default function FormMasterAttendance() {
       .then((response) => {
         const data = parseTodayAttendanceResponse(response);
 
-        if (active) {
-          setTodayAttendance(data);
-          setAttendanceDate(data.attendanceDate);
-          setToDate(data.attendanceDate);
-          serverStudentsRef.current = data.students.map((student) => ({ ...student }));
-          dirtyStudentIdsRef.current = new Set();
-          const identity = getAttendanceIdentity(
-            data,
-            { id: authenticatedUserId, schoolId: authenticatedSchoolId },
-            { id: contextSchoolId }
-          );
-          try {
-            removePreviousDateBackups(identity);
-            const backup = restoreAttendanceBackup(
-              identity,
-              data.students,
-              data.attendanceRegister
-            );
-            if (backup) {
-              setStudents(backup.students);
-              dirtyStudentIdsRef.current = new Set(backup.appliedStudentIds);
-              unsavedChangesRef.current = true;
-              setUnsavedChanges(true);
-              setMessage(
-                backup.hasServerConflict
-                  ? "Recovered local attendance changes. Some statuses differed from the server and were left unchanged; review those students before saving."
-                  : "Recovered your unsaved attendance changes from this device."
-              );
-            } else {
-              setStudents(data.students);
-              unsavedChangesRef.current = false;
-              setUnsavedChanges(false);
-            }
-          } catch (storageError) {
-            setStudents(data.students);
-            unsavedChangesRef.current = false;
-            setUnsavedChanges(false);
-            setError(
-              `Attendance loaded, but local recovery storage is unavailable: ${
-                storageError?.message || "unknown storage error"
-              }`
-            );
-          }
-          setSavedRegisters({});
-        }
+        if (!active) return;
+
+        setTodayAttendance(data);
+        setAttendanceDate(data.attendanceDate);
+        setStudents(data.students);
+        savedStatusesRef.current = new Map(
+          data.students.map((student) => [student.id, student.status])
+        );
+        unsavedChangesRef.current = false;
+        setUnsavedChanges(false);
       })
       .catch((requestError) => {
         if (active) {
@@ -1110,38 +787,22 @@ export default function FormMasterAttendance() {
     return () => {
       active = false;
     };
-  }, [todayRefreshKey, authenticatedUserId, authenticatedSchoolId, contextSchoolId]);
+  }, [todayRefreshKey]);
 
   const currentCounts = useMemo(() => getCounts(students), [students]);
 
-  const currentRegister =
-    savedRegisters[attendanceDate] ||
-    (todayAttendance?.attendanceDate === attendanceDate
-      ? todayAttendance.attendanceRegister
-      : null);
-  const todayIdentity =
-    todayAttendance?.attendanceDate === attendanceDate
-      ? getAttendanceIdentity(
-        todayAttendance,
-        { id: authenticatedUserId, schoolId: authenticatedSchoolId },
-        { id: contextSchoolId }
-      )
-      : null;
-  const todayBackupIdentity = todayAttendance
-    ? getAttendanceIdentity(
-        todayAttendance,
-        { id: authenticatedUserId, schoolId: authenticatedSchoolId },
-        { id: contextSchoolId }
-      )
-    : null;
-  const canSaveAttendance = Boolean(
-    todayIdentity && currentRegister?.id && students.length
-  );
-
+  const currentRegister = todayAttendance?.attendanceRegister || null;
   const registerStatus = currentRegister?.status || "NEW";
 
+  // The server decides whether this register still sits inside the school's
+  // current session and term, so the page never assumes it can save.
+  const canEditToday =
+    !todayAttendance?.permissions || todayAttendance.permissions.canEdit !== false;
+
   const isReadOnly =
-    registerStatus === "SUBMITTED" && !isEditingSubmitted;
+    !canEditToday || (registerStatus === "SUBMITTED" && !isEditingSubmitted);
+
+  const canSaveAttendance = Boolean(currentRegister?.id && students.length);
 
   const takeAttendance = async () => {
     if (creatingToday) return;
@@ -1154,14 +815,15 @@ export default function FormMasterAttendance() {
       const data = parseTodayAttendanceResponse(response, true);
       setTodayAttendance(data);
       setAttendanceDate(data.attendanceDate);
-      setToDate(data.attendanceDate);
-      serverStudentsRef.current = data.students.map((student) => ({ ...student }));
-      dirtyStudentIdsRef.current = new Set();
       setStudents(data.students);
+      savedStatusesRef.current = new Map(
+        data.students.map((student) => [student.id, student.status])
+      );
+      unsavedChangesRef.current = false;
       setUnsavedChanges(false);
-      setSavedRegisters({});
       setSearchTerm("");
       setIsEditingSubmitted(false);
+      setError("");
       setMessage(
         response.message || "Today's attendance register created successfully."
       );
@@ -1190,152 +852,38 @@ export default function FormMasterAttendance() {
     );
   }, [students, searchTerm]);
 
-  const selectedSession = MOCK_SESSIONS.find(
-    (session) => session.id === sessionFilter
-  );
-
-  const termOptions =
-    sessionFilter === "ALL"
-      ? MOCK_SESSIONS.flatMap((session) => session.terms).filter(
-          (term, index, array) =>
-            array.findIndex((item) => item.id === term.id) === index
-        )
-      : selectedSession?.terms || [];
-
-  const filteredHistory = useMemo(() => {
-    const recordsByDate = new Map();
-
-    MOCK_HISTORY.forEach((record) => {
-      recordsByDate.set(record.date, {
-        ...record,
-        students: getMockStudents(record),
-      });
-    });
-
-    Object.values(savedRegisters).forEach((register) => {
-      recordsByDate.set(register.date, register);
-    });
-
-    return [...recordsByDate.values()]
-      .filter((record) => {
-        if (sessionFilter !== "ALL" && record.session !== sessionFilter) {
-          return false;
-        }
-
-        if (termFilter !== "ALL" && record.term !== termFilter) {
-          return false;
-        }
-
-        if (fromDate && record.date < fromDate) return false;
-        if (toDate && record.date > toDate) return false;
-
-        const query = historySearch.trim().toLowerCase();
-
-        if (query) {
-          const matches = [
-            record.className,
-            record.session,
-            formatTerm(record.term),
-            record.date,
-          ].some((value) => value.toLowerCase().includes(query));
-
-          if (!matches) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [
-    savedRegisters,
-    sessionFilter,
-    termFilter,
-    fromDate,
-    toDate,
-    historySearch,
-  ]);
-
-  const applyLocalAttendanceChanges = (nextStudents, changedIds) => {
+  const applyStatuses = (nextStudents) => {
     setStudents(nextStudents);
 
-    const baselineByStudentId = new Map(
-      serverStudentsRef.current.map((student) => [student.id, student.status])
+    const isDirty = nextStudents.some(
+      (student) => student.status !== savedStatusesRef.current.get(student.id)
     );
-    changedIds.forEach((studentId) => {
-      const student = nextStudents.find((item) => item.id === studentId);
-      if (student && student.status === baselineByStudentId.get(studentId)) {
-        dirtyStudentIdsRef.current.delete(studentId);
-      } else if (student) {
-        dirtyStudentIdsRef.current.add(studentId);
-      }
-    });
-
-    const isDirty = dirtyStudentIdsRef.current.size > 0;
     unsavedChangesRef.current = isDirty;
     setUnsavedChanges(isDirty);
     setMessage("");
     setError("");
-
-    if (!todayIdentity) {
-      if (todayAttendance?.attendanceDate === attendanceDate) {
-        setError(
-          "Attendance changed, but the school, form master, or class ID is unavailable for local backup."
-        );
-      }
-      return;
-    }
-    try {
-      if (!isDirty) {
-        removeAttendanceBackup(todayIdentity);
-        return;
-      }
-
-      const dirtyStatuses = nextStudents
-        .filter((student) => dirtyStudentIdsRef.current.has(student.id))
-        .map((student) => ({
-          studentId: student.id,
-          status: student.status,
-        }));
-      saveAttendanceBackup(todayIdentity, dirtyStatuses, new Date().toISOString());
-    } catch (storageError) {
-      setError(
-        `Attendance changed, but the local backup could not be saved: ${
-          storageError?.message || "unknown storage error"
-        }`
-      );
-    }
   };
 
   const updateStudentStatus = (studentId, status) => {
-    const nextStudents = students.map((student) =>
-      student.id === studentId ? { ...student, status } : student
+    applyStatuses(
+      students.map((student) =>
+        student.id === studentId ? { ...student, status } : student
+      )
     );
-    applyLocalAttendanceChanges(nextStudents, [studentId]);
   };
 
   const markAllPresent = () => {
     if (isReadOnly) return;
 
-    const nextStudents = students.map((student) => ({
-      ...student,
-      status: "PRESENT",
-    }));
-    applyLocalAttendanceChanges(
-      nextStudents,
-      nextStudents.map((student) => student.id)
+    applyStatuses(
+      students.map((student) => ({ ...student, status: "PRESENT" }))
     );
   };
 
   const clearAttendance = () => {
     if (isReadOnly) return;
 
-    const nextStudents = students.map((student) => ({
-      ...student,
-      status: null,
-    }));
-    applyLocalAttendanceChanges(
-      nextStudents,
-      nextStudents.map((student) => student.id)
-    );
+    applyStatuses(students.map((student) => ({ ...student, status: null })));
   };
 
   const confirmSuccessfulSave = (response, expectedStatus) => {
@@ -1361,69 +909,25 @@ export default function FormMasterAttendance() {
       );
     }
 
-    const savedRegister = {
-      ...currentRegister,
-      ...register,
-      date: register.attendanceDate,
-      status: register.status,
-      students: students.map((student) => ({ ...student })),
-      total: response.data.totalStudents,
-      present:
-        expectedStatus === "SUBMITTED"
-          ? response.data.presentCount
-          : students.filter((student) => student.status === "PRESENT").length,
-      absent:
-        expectedStatus === "SUBMITTED"
-          ? response.data.absentCount
-          : students.filter((student) => student.status === "ABSENT").length,
-      unconfirmed:
-        expectedStatus === "DRAFT"
-          ? response.data.unmarkedStudents
-          : 0,
-      savedAt: new Date().toISOString(),
-      submittedAt:
-        expectedStatus === "SUBMITTED"
-          ? new Date().toISOString()
-          : currentRegister?.submittedAt ?? null,
-    };
-
-    try {
-      removeAttendanceBackup(todayIdentity);
-    } catch (storageError) {
-      throw new Error(
-        `Attendance was saved, but its local backup could not be cleared: ${
-          storageError?.message || "unknown storage error"
-        }`,
-        { cause: storageError }
-      );
-    }
-
-    serverStudentsRef.current = students.map((student) => ({ ...student }));
-    dirtyStudentIdsRef.current = new Set();
+    savedStatusesRef.current = new Map(
+      students.map((student) => [student.id, student.status])
+    );
     unsavedChangesRef.current = false;
     setUnsavedChanges(false);
     setTodayAttendance((previous) =>
       previous
-        ? { ...previous, attendanceRegister: savedRegister }
+        ? {
+            ...previous,
+            attendanceRegister: { ...previous.attendanceRegister, ...register },
+          }
         : previous
     );
-    setSavedRegisters((previous) => ({
-      ...previous,
-      [attendanceDate]: savedRegister,
-    }));
-    return savedRegister;
+
+    return response.data;
   };
 
   const saveDraft = async () => {
     if (savingAttendance || submittingAttendance) return;
-    if (attendanceDate > TODAY) {
-      setError("Attendance cannot be recorded for a future date.");
-      return;
-    }
-    if (!todayIdentity) {
-      setError("Saving attendance for historical demo records is not connected.");
-      return;
-    }
     if (!currentRegister?.id) {
       setError("This attendance register is missing its ID and cannot be saved.");
       return;
@@ -1463,30 +967,8 @@ export default function FormMasterAttendance() {
     }
   };
 
-  const saveChanges = async () => {
-    if (attendanceDate > TODAY) {
-      setError("Attendance cannot be recorded for a future date.");
-      return;
-    }
-
-    if (currentCounts.unconfirmed > 0) {
-      await saveDraft();
-      return;
-    }
-
-    await submitAttendance();
-  };
-
   const submitAttendance = async () => {
     if (savingAttendance || submittingAttendance) return;
-    if (attendanceDate > TODAY) {
-      setError("Attendance cannot be recorded for a future date.");
-      return;
-    }
-    if (!todayIdentity) {
-      setError("Submitting historical demo records is not connected.");
-      return;
-    }
 
     if (currentCounts.unconfirmed > 0) {
       setSubmissionPromptOpen(true);
@@ -1517,9 +999,7 @@ export default function FormMasterAttendance() {
       confirmSuccessfulSave(response, "SUBMITTED");
       setIsEditingSubmitted(false);
       setSubmissionPromptOpen(false);
-      setMessage(
-        response.message || "Attendance submitted successfully."
-      );
+      setMessage(response.message || "Attendance submitted successfully.");
     } catch (requestError) {
       setError(
         requestError?.response?.data?.message ||
@@ -1531,155 +1011,42 @@ export default function FormMasterAttendance() {
     }
   };
 
-  const handleContinueDraft = (record) => {
+  const saveChanges = async () => {
+    if (currentCounts.unconfirmed > 0) {
+      await saveDraft();
+      return;
+    }
+
+    await submitAttendance();
+  };
+
+  const returnToToday = () => {
     if (
       unsavedChangesRef.current &&
       !window.confirm(
-        "You have unsaved attendance changes. Continue to this draft without saving them?"
+        "Discard your unsaved attendance changes and return to the saved register?"
       )
     ) {
       return;
     }
 
-    const register = {
-      ...record,
-      students: (record.students || getMockStudents(record)).map((student) => ({
-        ...student,
-      })),
-      status: "DRAFT",
-    };
-
-    setSavedRegisters((previous) => ({
-      ...previous,
-      [record.date]: register,
+    const nextStudents = (todayAttendance?.students || []).map((student) => ({
+      ...student,
+      status: savedStatusesRef.current.get(student.id) ?? null,
     }));
 
-    setAttendanceDate(record.date);
-    setStudents(register.students);
-    setSelectedHistory(null);
-    setActiveTab("daily");
-    setIsEditingSubmitted(false);
-    setSearchTerm("");
-    setMessage("Draft opened. Continue from where you previously stopped.");
-    setError("");
-  };
-
-  const handleEditAttendance = (record) => {
-    if (
-      unsavedChangesRef.current &&
-      !window.confirm(
-        "You have unsaved attendance changes. Continue to this register without saving them?"
-      )
-    ) {
-      return;
-    }
-
-    const register = {
-      ...record,
-      students: (record.students || getMockStudents(record)).map((student) => ({
-        ...student,
-      })),
-    };
-
-    setSavedRegisters((previous) => ({
-      ...previous,
-      [record.date]: register,
-    }));
-
-    setAttendanceDate(record.date);
-    setStudents(register.students);
-    setSelectedHistory(null);
-    setActiveTab("daily");
-    setIsEditingSubmitted(true);
-    setSearchTerm("");
-    setMessage(
-      "Editing a submitted register. Save your changes or submit the updated attendance."
+    setStudents(nextStudents);
+    const isDirty = nextStudents.some(
+      (student) => student.status !== savedStatusesRef.current.get(student.id)
     );
-    setError("");
-  };
-
-  const exportHistoryCsv = () => {
-    const headers = [
-      "Date",
-      "Class",
-      "Academic Session",
-      "Term",
-      "Register Status",
-      "Total Students",
-      "Present",
-      "Absent",
-      "Unconfirmed",
-    ];
-
-    const rows = filteredHistory.map((record) => [
-      record.date,
-      record.className,
-      record.session,
-      formatTerm(record.term),
-      record.status === "SUBMITTED" ? "Completed" : "Draft",
-      record.total,
-      record.present,
-      record.absent,
-      getUnconfirmed(record),
-    ]);
-
-    const escapeCsv = (value) =>
-      `"${String(value ?? "").replace(/"/g, '""')}"`;
-
-    const csv = [headers, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-
-    anchor.href = url;
-    anchor.download = "attendance-history.csv";
-    anchor.click();
-
-    URL.revokeObjectURL(url);
-  };
-
-  const resetDemo = () => {
-    if (
-      unsavedChangesRef.current &&
-      !window.confirm("Discard your unsaved attendance changes and reset this register?")
-    ) {
-      return;
-    }
-    try {
-      removeAttendanceBackup(todayBackupIdentity);
-    } catch (storageError) {
-      setError(
-        `Could not clear the local attendance backup: ${
-          storageError?.message || "unknown storage error"
-        }`
-      );
-      return;
-    }
+    unsavedChangesRef.current = isDirty;
+    setUnsavedChanges(isDirty);
     setActiveTab("daily");
-    setAttendanceDate(todayAttendance?.attendanceDate || TODAY);
-    setStudents(
-      todayAttendance?.students.map((student) => ({ ...student })) || []
-    );
-    serverStudentsRef.current =
-      todayAttendance?.students.map((student) => ({ ...student })) || [];
-    dirtyStudentIdsRef.current = new Set();
-    unsavedChangesRef.current = false;
-    setUnsavedChanges(false);
-    setSavedRegisters({});
     setSearchTerm("");
     setMessage("");
     setError("");
-    setSelectedHistory(null);
     setSubmissionPromptOpen(false);
     setIsEditingSubmitted(false);
-    setSessionFilter(CURRENT_SESSION);
-    setTermFilter(CURRENT_TERM);
-    setFromDate("2026-09-14");
-    setToDate(todayAttendance?.attendanceDate || TODAY);
-    setHistorySearch("");
   };
 
   const changeTab = (nextTab) => {
@@ -1689,7 +1056,7 @@ export default function FormMasterAttendance() {
       !savingAttendance &&
       !submittingAttendance &&
       !window.confirm(
-        "You have unsaved attendance changes. Continue without saving them?"
+        "You have attendance changes that have not been saved. Continue without saving them?"
       )
     ) {
       return;
@@ -1734,7 +1101,7 @@ export default function FormMasterAttendance() {
 
       if (
         !window.confirm(
-          "You have unsaved attendance changes. Continue without saving them?"
+          "You have attendance changes that have not been saved. Continue without saving them?"
         )
       ) {
         event.preventDefault();
@@ -1754,7 +1121,7 @@ export default function FormMasterAttendance() {
 
       if (
         !window.confirm(
-          "You have unsaved attendance changes. Continue without saving them?"
+          "You have attendance changes that have not been saved. Continue without saving them?"
         )
       ) {
         navigate(routeRef.current, { replace: true });
@@ -1770,11 +1137,11 @@ export default function FormMasterAttendance() {
         return;
       }
 
-      const message =
-        "Your changes will only save on this device. If you use another device, this draft may not appear there.";
+      const warning =
+        "Your attendance changes have not been saved. Leave and discard them?";
       event.preventDefault();
-      event.returnValue = message;
-      return message;
+      event.returnValue = warning;
+      return warning;
     };
 
     document.addEventListener("click", confirmRouteLink, true);
@@ -1787,60 +1154,312 @@ export default function FormMasterAttendance() {
     };
   }, [navigate, savingAttendance, submittingAttendance]);
 
-  const handleSessionChange = (value) => {
-    setSessionFilter(value);
+  // The history list is entirely server-driven: filters are debounced and a
+  // request id makes sure only the newest response reaches the table.
+  useEffect(() => {
+    if (activeTab !== "history") return undefined;
 
-    if (value === "ALL") {
-      setTermFilter("ALL");
-      setFromDate("2026-09-14");
-      setToDate(todayAttendance?.attendanceDate || TODAY);
-      return;
-    }
+    const requestId = (historyRequestIdRef.current += 1);
+    const timer = window.setTimeout(async () => {
+      setHistoryLoading(true);
+      setHistoryError("");
 
-    const session = MOCK_SESSIONS.find((item) => item.id === value);
-    const defaultTerm =
-      session?.terms.find((term) => term.id === CURRENT_TERM) ||
-      session?.terms[0];
+      try {
+        const payload = await getMyAttendanceHistory(
+          buildHistoryParams(historyFilters, {
+            page: historyPage,
+            limit: historyLimit,
+          })
+        );
 
-    setTermFilter(defaultTerm?.id || "ALL");
+        if (requestId !== historyRequestIdRef.current) return;
 
-    setFromDate(
-      defaultTerm?.startDate &&
-      defaultTerm.startDate <= (todayAttendance?.attendanceDate || TODAY)
-        ? defaultTerm.startDate
-        : todayAttendance?.attendanceDate || TODAY
-    );
+        const data = payload?.data;
+        if (!data || !Array.isArray(data.registers)) {
+          throw new Error("The server returned an invalid attendance history response.");
+        }
 
-    setToDate(todayAttendance?.attendanceDate || TODAY);
+        const totalPages = Number(payload?.pagination?.totalPages) || 0;
+        if (historyPage > 1 && historyPage > totalPages) {
+          setHistoryPage(Math.max(totalPages, 1));
+          return;
+        }
+
+        setHistoryData(data);
+        setHistoryPagination({
+          totalItems: Number(payload?.pagination?.totalItems) || 0,
+          currentPage: Number(payload?.pagination?.currentPage) || historyPage,
+          pageSize: Number(payload?.pagination?.pageSize) || historyLimit,
+          totalPages,
+        });
+      } catch (requestError) {
+        if (requestId !== historyRequestIdRef.current) return;
+
+        setHistoryData(null);
+        setHistoryPagination({
+          totalItems: 0,
+          currentPage: 1,
+          pageSize: historyLimit,
+          totalPages: 0,
+        });
+        setHistoryError(
+          requestError?.response?.data?.message ||
+            requestError?.message ||
+            "We could not load your attendance history. Check your connection and try again."
+        );
+      } finally {
+        if (requestId === historyRequestIdRef.current) setHistoryLoading(false);
+      }
+    }, HISTORY_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, historyFilters, historyPage, historyLimit, historyRefreshToken]);
+
+  const historyRegisters = useMemo(
+    () =>
+      Array.isArray(historyData?.registers) ? historyData.registers : [],
+    [historyData]
+  );
+
+  const sessionOptions = Array.isArray(historyData?.availablePeriods?.sessions)
+    ? historyData.availablePeriods.sessions
+    : [];
+  const termOptions = useMemo(() => {
+    const terms = historyData?.availablePeriods?.terms ?? [];
+    if (historyFilters.sessionId === ALL_PERIODS) return terms;
+
+    return terms.filter((term) => term.sessionId === historyFilters.sessionId);
+  }, [historyData, historyFilters.sessionId]);
+
+  const hasActiveHistoryFilters =
+    historyFilters.sessionId !== ALL_PERIODS ||
+    historyFilters.termId !== ALL_PERIODS ||
+    Boolean(historyFilters.fromDate) ||
+    Boolean(historyFilters.toDate) ||
+    historyFilters.status !== ALL_PERIODS;
+
+  // The server counts every register matching the filters, so the cards keep
+  // the same totals when the form master turns the page.
+  const historyTotals = historyData?.summary ?? {
+    presentCount: 0,
+    absentCount: 0,
+    unmarkedCount: 0,
+    totalRegisters: 0,
   };
 
-  const handleTermChange = (value) => {
-    setTermFilter(value);
+  const historyAggregateScope = `${
+    historyTotals.totalRegisters ?? 0
+  } register${historyTotals.totalRegisters === 1 ? "" : "s"}`;
 
-    if (value === "ALL") {
-      setFromDate(
-        sessionFilter === CURRENT_SESSION ? "2026-09-14" : "2025-09-15"
-      );
-      setToDate(todayAttendance?.attendanceDate || TODAY);
-      return;
-    }
+  const firstHistoryRow = historyPagination.totalItems
+    ? (historyPagination.currentPage - 1) * historyPagination.pageSize + 1
+    : 0;
+  const lastHistoryRow = Math.min(
+    historyPagination.currentPage * historyPagination.pageSize,
+    historyPagination.totalItems
+  );
 
-    const term = termOptions.find((item) => item.id === value);
-
-    if (term) {
-      const latestDate = todayAttendance?.attendanceDate || TODAY;
-      setFromDate(term.startDate <= latestDate ? term.startDate : latestDate);
-      setToDate(latestDate);
-    }
+  const updateHistoryFilters = (changes) => {
+    setHistoryFilters((previous) => ({ ...previous, ...changes }));
+    setHistoryPage(1);
+    setHistoryMessage("");
   };
 
   const resetHistoryFilters = () => {
-    setSessionFilter(CURRENT_SESSION);
-    setTermFilter(CURRENT_TERM);
-    setFromDate("2026-09-14");
-    setToDate(todayAttendance?.attendanceDate || TODAY);
-    setHistorySearch("");
+    setHistoryFilters({
+      sessionId: ALL_PERIODS,
+      termId: ALL_PERIODS,
+      fromDate: "",
+      toDate: "",
+      status: ALL_PERIODS,
+    });
+    setHistoryPage(1);
+    setHistoryMessage("");
   };
+
+  const openRegisterModal = async (register) => {
+    const requestId = (detailRequestIdRef.current += 1);
+    setRegisterModal({
+      registerId: register.id,
+      loading: true,
+      error: "",
+      saveError: "",
+      saving: false,
+      detail: null,
+      students: [],
+    });
+
+    try {
+      const payload = await getAttendanceRegister(register.id);
+      if (requestId !== detailRequestIdRef.current) return;
+
+      const data = payload?.data;
+      if (!data || !Array.isArray(data.students) || !data.attendanceRegister) {
+        throw new Error("The server returned an invalid attendance register response.");
+      }
+
+      setRegisterModal({
+        registerId: register.id,
+        loading: false,
+        error: "",
+        saveError: "",
+        saving: false,
+        detail: data,
+        students: data.students.map((student) => ({
+          ...student,
+          firstName: student.firstName ?? "",
+          surname: student.surName ?? "",
+        })),
+      });
+    } catch (requestError) {
+      if (requestId !== detailRequestIdRef.current) return;
+
+      setRegisterModal({
+        registerId: register.id,
+        loading: false,
+        error:
+          requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to load this attendance register.",
+        saveError: "",
+        saving: false,
+        detail: null,
+        students: [],
+      });
+    }
+  };
+
+  const closeRegisterModal = () => {
+    detailRequestIdRef.current += 1;
+    setRegisterModal(null);
+  };
+
+  const toggleModalStudent = (studentId, status) => {
+    setRegisterModal((previous) =>
+      previous
+        ? {
+            ...previous,
+            saveError: "",
+            students: previous.students.map((student) =>
+              student.studentId === studentId ? { ...student, status } : student
+            ),
+          }
+        : previous
+    );
+  };
+
+  const saveRegisterCorrections = async () => {
+    if (!registerModal?.detail || registerModal.saving) return;
+
+    setRegisterModal((previous) => ({
+      ...previous,
+      saving: true,
+      saveError: "",
+    }));
+
+    try {
+      const payload = await submitAttendanceRequest(
+        registerModal.registerId,
+        registerModal.students.map((student) => ({
+          studentId: student.studentId,
+          status: student.status,
+        }))
+      );
+
+      closeRegisterModal();
+      setHistoryMessage(
+        payload?.message || "Attendance corrections saved successfully."
+      );
+      setHistoryRefreshToken((value) => value + 1);
+
+      if (registerModal.registerId === currentRegister?.id) {
+        setTodayRefreshKey((value) => value + 1);
+      }
+    } catch (requestError) {
+      setRegisterModal((previous) =>
+        previous
+          ? {
+              ...previous,
+              saving: false,
+              saveError:
+                requestError?.response?.data?.message ||
+                requestError?.message ||
+                "Unable to save the attendance corrections.",
+            }
+          : previous
+      );
+    }
+  };
+
+  const exportHistoryCsv = async () => {
+    if (exporting) return;
+
+    setExporting(true);
+    setExportMessage("");
+    setExportError("");
+
+    try {
+      const { records, truncated } = await collectAllPages(({ page, limit }) =>
+        getMyAttendanceHistory(buildHistoryParams(historyFilters, { page, limit })).then(
+          (payload) => ({
+            records: Array.isArray(payload?.data?.registers)
+              ? payload.data.registers
+              : [],
+            totalPages: payload?.pagination?.totalPages,
+          })
+        )
+      );
+
+      if (!records.length) {
+        setExportMessage(
+          "There are no attendance registers to export for these filters."
+        );
+        return;
+      }
+
+      const classLabel = getClassLabel(historyData?.class);
+      const rows = [
+        [
+          "Date",
+          "Class",
+          "Academic session",
+          "Term",
+          "Register status",
+          "Total students",
+          "Present",
+          "Absent",
+          "Unconfirmed",
+        ],
+        ...records.map((register) => [
+          register?.attendanceDate ?? "",
+          classLabel,
+          register?.session?.sessionName ?? "",
+          register?.term?.termName ?? "",
+          register?.status === "SUBMITTED" ? "Completed" : "Draft",
+          register?.attendanceSummary?.totalStudents ?? 0,
+          register?.attendanceSummary?.presentCount ?? 0,
+          register?.attendanceSummary?.absentCount ?? 0,
+          register?.attendanceSummary?.unconfirmedCount ?? 0,
+        ]),
+      ];
+
+      downloadFile(toCsv(rows), "scholanode-attendance-history.csv");
+      setExportMessage(
+        truncated
+          ? `Export stopped at ${records.length} records to keep the file manageable. Narrow the filters for the rest.`
+          : `${records.length} register${records.length === 1 ? "" : "s"} exported.`
+      );
+    } catch (requestError) {
+      setExportError(
+        requestError?.response?.data?.message ||
+          "The export could not be generated. Please try again."
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const historyClassLabel = getClassLabel(historyData?.class);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(73,166,255,0.09),_transparent_38%),#f8fafc]">
@@ -1929,11 +1548,31 @@ export default function FormMasterAttendance() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-200">Attendance date</p>
-                <p className="mt-1.5 text-sm font-bold">{formatDate(todayAttendance?.attendanceDate || attendanceDate)}</p>
+                <p className="mt-1.5 text-sm font-bold">
+                  {todayLoading ? "Loading…" : formatDate(todayAttendance?.attendanceDate || attendanceDate)}
+                </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-200">Register</p>
-                <div className="mt-1.5"><RegisterStatusBadge status={todayAttendance?.attendanceRegister?.status || "NEW"} /></div>
+                <div className="mt-1.5"><RegisterStatusBadge status={registerStatus} /></div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-200">Academic session</p>
+                <p className="mt-1.5 text-sm font-bold">
+                  {todayLoading
+                    ? "Loading…"
+                    : todayAttendance?.academicPeriod?.session?.sessionName ||
+                      "No active session"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-200">Term</p>
+                <p className="mt-1.5 text-sm font-bold">
+                  {todayLoading
+                    ? "Loading…"
+                    : todayAttendance?.academicPeriod?.term?.termName ||
+                      "No active term"}
+                </p>
               </div>
             </div>
           </div>
@@ -1960,9 +1599,9 @@ export default function FormMasterAttendance() {
 
           <button
             type="button"
-            onClick={resetDemo}
+            onClick={returnToToday}
             className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            title="Reset local attendance changes"
+            title="Discard unsaved changes and show the latest saved register"
           >
             <RotateCcw size={15} />
             Return to today
@@ -2086,7 +1725,7 @@ export default function FormMasterAttendance() {
 
                   <p className="mt-1 text-sm text-slate-500">
                     {isReadOnly
-                      ? "This register has been submitted. It is read-only until you choose to edit it."
+                      ? "This register is read-only. It can only be changed while its session and term are the school's current ones."
                       : "Select Present or Absent for each student. Click a selected status again to clear it."}
                   </p>
                 </div>
@@ -2100,16 +1739,23 @@ export default function FormMasterAttendance() {
                     <input
                       type="date"
                       value={attendanceDate}
-                      max={todayAttendance?.attendanceDate || TODAY}
+                      max={todayAttendance?.attendanceDate || undefined}
                       disabled
-                      title="Only today's register is connected at this stage."
+                      title="This page always shows the register date the server assigned."
                       className="rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
                 </FilterField>
               </div>
 
-              {isReadOnly && (
+              {!canEditToday && currentRegister?.id && (
+                <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  <LockKeyhole size={18} className="mt-0.5 shrink-0" />
+                  <p className="leading-5">{NO_EDIT_REASON}</p>
+                </div>
+              )}
+
+              {canEditToday && registerStatus === "SUBMITTED" && !isEditingSubmitted && (
                 <div className="mt-5 flex flex-col gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="rounded-lg bg-white p-2 text-emerald-700">
@@ -2124,8 +1770,7 @@ export default function FormMasterAttendance() {
                         to correct a student's status.
                       </p>
                       <p className="mt-2 text-xs text-emerald-800">
-                        Submitted:{" "}
-                        {formatDateTime(currentRegister?.submittedAt)}
+                        Last updated: {formatDateTime(currentRegister?.updatedAt)}
                       </p>
                     </div>
                   </div>
@@ -2136,9 +1781,8 @@ export default function FormMasterAttendance() {
                 <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                   <p className="font-semibold">Editing a submitted register</p>
                   <p className="mt-1 leading-5">
-                    Changes will update this same register. If you save while
-                    students remain unconfirmed, it will return to Draft until
-                    the register is completed and submitted again.
+                    Changes will update this same register. Saving marks it
+                    completed again, so every student must be Present or Absent.
                   </p>
                 </div>
               )}
@@ -2350,31 +1994,32 @@ export default function FormMasterAttendance() {
                 <p className="text-xs leading-5 text-slate-500">
                   Register date: <strong>{formatDate(attendanceDate)}</strong>
                   <br />
-                  {currentRegister?.savedAt
-                    ? `Last saved: ${formatDateTime(currentRegister.savedAt)}`
-                    : "No local changes have been saved for this date."}
+                  {currentRegister?.updatedAt
+                    ? `Last updated: ${formatDateTime(currentRegister.updatedAt)}`
+                    : "Nothing has been saved to this register yet."}
+                  {unsavedChanges ? " · You have changes that are not saved." : ""}
                 </p>
 
                 {isReadOnly ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingSubmitted(true);
-                      setMessage("Editing submitted attendance. Save your changes when finished.");
-                      setError("");
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123A8F]"
-                  >
-                    <Pencil size={17} />
-                    Edit Attendance
-                  </button>
+                  canEditToday ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingSubmitted(true);
+                        setMessage("Editing submitted attendance. Save your changes when finished.");
+                        setError("");
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#071A52] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123A8F]"
+                    >
+                      <Pencil size={17} />
+                      Edit Attendance
+                    </button>
+                  ) : null
                 ) : (
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
-                      onClick={
-                        isEditingSubmitted ? saveChanges : saveDraft
-                      }
+                      onClick={isEditingSubmitted ? saveChanges : saveDraft}
                       disabled={savingAttendance || submittingAttendance || !canSaveAttendance}
                       className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -2420,35 +2065,65 @@ export default function FormMasterAttendance() {
                     Attendance history
                   </h2>
                   <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Review saved drafts and submitted registers for your
-                    assigned class. The session and term default to the current
-                    ones.
+                    {historyLoading && !historyData
+                      ? "Loading your attendance registers…"
+                      : `Every register saved for ${historyClassLabel}, newest first.`}
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={exportHistoryCsv}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  disabled={exporting}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Download size={16} />
-                  Export CSV
+                  {exporting ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  {exporting ? "Exporting…" : "Export CSV"}
                 </button>
               </div>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {(exportMessage || exportError) && (
+                <p
+                  role={exportError ? "alert" : "status"}
+                  className={`mt-4 rounded-xl border px-4 py-3 text-sm font-medium ${
+                    exportError
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : "border-blue-200 bg-blue-50 text-blue-900"
+                  }`}
+                >
+                  {exportError || exportMessage}
+                </p>
+              )}
+
+              {historyMessage && (
+                <p
+                  role="status"
+                  className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+                >
+                  {historyMessage}
+                </p>
+              )}
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <FilterField label="Academic session">
                   <select
-                    value={sessionFilter}
+                    value={historyFilters.sessionId}
                     onChange={(event) =>
-                      handleSessionChange(event.target.value)
+                      updateHistoryFilters({
+                        sessionId: event.target.value,
+                        termId: ALL_PERIODS,
+                      })
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   >
-                    <option value="ALL">All sessions</option>
-                    {MOCK_SESSIONS.map((session) => (
+                    <option value={ALL_PERIODS}>All sessions</option>
+                    {sessionOptions.map((session) => (
                       <option key={session.id} value={session.id}>
-                        {session.label}
+                        {session.sessionName}
                       </option>
                     ))}
                   </select>
@@ -2456,32 +2131,43 @@ export default function FormMasterAttendance() {
 
                 <FilterField label="Term">
                   <select
-                    value={termFilter}
-                    onChange={(event) => handleTermChange(event.target.value)}
+                    value={historyFilters.termId}
+                    onChange={(event) =>
+                      updateHistoryFilters({ termId: event.target.value })
+                    }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   >
-                    <option value="ALL">All terms</option>
+                    <option value={ALL_PERIODS}>All terms</option>
                     {termOptions.map((term) => (
                       <option key={term.id} value={term.id}>
-                        {term.name}
+                        {term.termName}
                       </option>
                     ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label="Register status">
+                  <select
+                    value={historyFilters.status}
+                    onChange={(event) =>
+                      updateHistoryFilters({ status: event.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value={ALL_PERIODS}>Any status</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Completed</option>
                   </select>
                 </FilterField>
 
                 <FilterField label="From date">
                   <input
                     type="date"
-                    value={fromDate}
-                    max={TODAY}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setFromDate(value);
-
-                      if (value && toDate && value > toDate) {
-                        setToDate(value);
-                      }
-                    }}
+                    value={historyFilters.fromDate}
+                    max={historyFilters.toDate || todayAttendance?.attendanceDate || undefined}
+                    onChange={(event) =>
+                      updateHistoryFilters({ fromDate: event.target.value })
+                    }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </FilterField>
@@ -2489,79 +2175,59 @@ export default function FormMasterAttendance() {
                 <FilterField label="To date">
                   <input
                     type="date"
-                    value={toDate}
-                    min={fromDate || undefined}
-                    max={TODAY}
-                    onChange={(event) => setToDate(event.target.value)}
+                    value={historyFilters.toDate}
+                    min={historyFilters.fromDate || undefined}
+                    max={todayAttendance?.attendanceDate || undefined}
+                    onChange={(event) =>
+                      updateHistoryFilters({ toDate: event.target.value })
+                    }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </FilterField>
-              </div>
 
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="relative w-full sm:max-w-xs">
-                  <Search
-                    size={17}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="text"
-                    value={historySearch}
-                    onChange={(event) => setHistorySearch(event.target.value)}
-                    placeholder="Search date, session or term..."
-                    className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={resetHistoryFilters}
+                    disabled={!hasActiveHistoryFilters}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RotateCcw size={15} />
+                    Reset filters
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={resetHistoryFilters}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  <RotateCcw size={15} />
-                  Reset filters
-                </button>
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="Registers found"
-                value={filteredHistory.length}
+                value={historyPagination.totalItems}
                 description="Matching your selected filters"
                 icon={CalendarDays}
                 color="navy"
               />
 
               <SummaryCard
-                title="Students present"
-                value={filteredHistory.reduce(
-                  (sum, record) => sum + record.present,
-                  0
-                )}
-                description="Across matching registers"
+                title="Present"
+                value={historyTotals.presentCount}
+                description={`Total across the ${historyAggregateScope} matching these filters`}
                 icon={UserCheck}
                 color="green"
               />
 
               <SummaryCard
-                title="Students absent"
-                value={filteredHistory.reduce(
-                  (sum, record) => sum + record.absent,
-                  0
-                )}
-                description="Across matching registers"
+                title="Absent"
+                value={historyTotals.absentCount}
+                description={`Total across the ${historyAggregateScope} matching these filters`}
                 icon={UserX}
                 color="red"
               />
 
               <SummaryCard
                 title="Unconfirmed"
-                value={filteredHistory.reduce(
-                  (sum, record) => sum + getUnconfirmed(record),
-                  0
-                )}
-                description="Across matching registers"
+                value={historyTotals.unmarkedCount}
+                description={`Total across the ${historyAggregateScope} matching these filters`}
                 icon={Info}
                 color="amber"
               />
@@ -2570,142 +2236,270 @@ export default function FormMasterAttendance() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div>
-                  <h3 className="font-bold text-slate-900">
-                    Previous registers
-                  </h3>
+                  <h3 className="font-bold text-slate-900">Previous registers</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Continue drafts or open submitted registers to view their
-                    details.
+                    Correct a register while its session and term are still the
+                    school's current ones.
                   </p>
                 </div>
 
                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#123A8F]">
-                  {filteredHistory.length} record
-                  {filteredHistory.length === 1 ? "" : "s"}
+                  Page {historyPagination.currentPage} of{" "}
+                  {Math.max(historyPagination.totalPages, 1)}
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3">Date</th>
-                      <th className="px-5 py-3">Session / Term</th>
-                      <th className="px-5 py-3">Present</th>
-                      <th className="px-5 py-3">Absent</th>
-                      <th className="px-5 py-3">Unconfirmed</th>
-                      <th className="px-5 py-3">Register status</th>
-                      <th className="px-5 py-3">Action</th>
-                    </tr>
-                  </thead>
+              {historyError ? (
+                <div className="p-10 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                    <AlertTriangle size={22} />
+                  </div>
+                  <p className="mt-3 font-bold text-slate-900">
+                    Attendance history could not be loaded
+                  </p>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-rose-700">
+                    {historyError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHistoryRefreshToken((value) => value + 1)
+                    }
+                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#071A52] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#123A8F]"
+                  >
+                    <RotateCcw size={16} />
+                    Retry
+                  </button>
+                </div>
+              ) : historyLoading && !historyData ? (
+                <HistorySkeleton />
+              ) : (
+                <>
+                  <div
+                    className={`overflow-x-auto transition-opacity ${
+                      historyLoading ? "opacity-60" : ""
+                    }`}
+                  >
+                    <table className="w-full min-w-[940px] text-left text-sm">
+                      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-5 py-3">Date</th>
+                          <th className="px-5 py-3">Session</th>
+                          <th className="px-5 py-3">Term</th>
+                          <th className="px-5 py-3">Present</th>
+                          <th className="px-5 py-3">Absent</th>
+                          <th className="px-5 py-3">Unconfirmed</th>
+                          <th className="px-5 py-3">Register status</th>
+                          <th className="px-5 py-3">Action</th>
+                        </tr>
+                      </thead>
 
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredHistory.map((record) => (
-                      <tr
-                        key={record.id || record.date}
-                        className="transition hover:bg-slate-50/70"
+                      <tbody className="divide-y divide-slate-100">
+                        {historyRegisters.map((register) => {
+                          const isTodaysRegister =
+                            Boolean(todayAttendance?.attendanceDate) &&
+                            register.attendanceDate ===
+                              todayAttendance.attendanceDate;
+                          const summary = register.attendanceSummary || {};
+
+                          return (
+                            <tr
+                              key={register.id}
+                              className="transition hover:bg-slate-50/70"
+                            >
+                              <td className="px-5 py-4">
+                                <p className="font-semibold text-slate-800">
+                                  {formatDate(register.attendanceDate)}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {historyClassLabel}
+                                </p>
+                              </td>
+
+                              <td className="px-5 py-4 font-medium text-slate-700">
+                                {register.session?.sessionName || "—"}
+                              </td>
+
+                              <td className="px-5 py-4 font-medium text-slate-700">
+                                {register.term?.termName || "—"}
+                              </td>
+
+                              <td className="px-5 py-4 font-semibold text-emerald-700">
+                                {summary.presentCount ?? 0}
+                              </td>
+
+                              <td className="px-5 py-4 font-semibold text-rose-700">
+                                {summary.absentCount ?? 0}
+                              </td>
+
+                              <td className="px-5 py-4 font-semibold text-amber-700">
+                                {summary.unconfirmedCount ?? 0}
+                              </td>
+
+                              <td className="px-5 py-4">
+                                <RegisterStatusBadge status={register.status} />
+                              </td>
+
+                              <td className="px-5 py-4">
+                                {isTodaysRegister ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveTab("daily");
+                                      setMessage(
+                                        "Today's register is marked on the Daily Attendance tab."
+                                      );
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#123A8F] hover:bg-blue-50"
+                                  >
+                                    <ClipboardCheck size={14} />
+                                    Daily tab
+                                  </button>
+                                ) : register.canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openRegisterModal(register)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#123A8F] hover:bg-blue-50"
+                                  >
+                                    <Pencil size={14} />
+                                    Edit
+                                  </button>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => openRegisterModal(register)}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                    >
+                                      <History size={14} />
+                                      View
+                                    </button>
+                                    <p className="max-w-[190px] text-[11px] leading-4 text-slate-400">
+                                      {NO_EDIT_REASON}
+                                    </p>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {historyRegisters.length === 0 && !historyLoading && (
+                          <tr>
+                            <td colSpan={8} className="px-5 py-14 text-center">
+                              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                                <Filter size={22} />
+                              </div>
+                              <p className="mt-3 font-semibold text-slate-800">
+                                {hasActiveHistoryFilters
+                                  ? "No registers match these filters"
+                                  : "No attendance recorded yet"}
+                              </p>
+                              <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                                {hasActiveHistoryFilters
+                                  ? "Try a different session, term, date range, or status."
+                                  : "Registers will appear here once you start taking attendance for your class."}
+                              </p>
+                              {hasActiveHistoryFilters && (
+                                <button
+                                  type="button"
+                                  onClick={resetHistoryFilters}
+                                  className="mt-4 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                                >
+                                  Clear filters
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <p className="text-[11px] text-slate-500">
+                      {historyPagination.totalItems > 0 ? (
+                        <>
+                          Showing{" "}
+                          <strong className="text-slate-700">
+                            {firstHistoryRow}–{lastHistoryRow}
+                          </strong>{" "}
+                          of{" "}
+                          <strong className="text-slate-700">
+                            {historyPagination.totalItems}
+                          </strong>{" "}
+                          registers
+                        </>
+                      ) : (
+                        "No registers to show"
+                      )}
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={historyLimit}
+                        onChange={(event) => {
+                          setHistoryLimit(Number(event.target.value));
+                          setHistoryPage(1);
+                        }}
+                        aria-label="Rows per page"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 outline-none focus:border-blue-500"
                       >
-                        <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-800">
-                            {formatDate(record.date)}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {record.className}
-                          </p>
-                        </td>
+                        <option value={10}>10 / page</option>
+                        <option value={20}>20 / page</option>
+                        <option value={50}>50 / page</option>
+                      </select>
 
-                        <td className="px-5 py-4">
-                          <p className="font-medium text-slate-700">
-                            {record.session}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatTerm(record.term)}
-                          </p>
-                        </td>
-
-                        <td className="px-5 py-4 font-semibold text-emerald-700">
-                          {record.present}
-                        </td>
-
-                        <td className="px-5 py-4 font-semibold text-rose-700">
-                          {record.absent}
-                        </td>
-
-                        <td className="px-5 py-4 font-semibold text-amber-700">
-                          {getUnconfirmed(record)}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <RegisterStatusBadge status={record.status} />
-                        </td>
-
-                        <td className="px-5 py-4">
-                          {record.status === "DRAFT" ? (
-                            <button
-                              type="button"
-                              onClick={() => handleContinueDraft(record)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                            >
-                              <Pencil size={14} />
-                              Continue Draft
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedHistory(record)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-[#123A8F] hover:bg-blue-50"
-                            >
-                              <History size={14} />
-                              View Summary
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-
-                    {filteredHistory.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-5 py-14 text-center">
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                            <Filter size={22} />
-                          </div>
-                          <p className="mt-3 font-semibold text-slate-800">
-                            No attendance records found
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Try changing the session, term, or date range.
-                          </p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHistoryPage((value) => Math.max(1, value - 1))
+                        }
+                        disabled={historyLoading || historyPagination.currentPage <= 1}
+                        aria-label="Previous page"
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ChevronLeft size={15} />
+                      </button>
+                      <span className="min-w-20 text-center text-[11px] font-bold text-slate-600">
+                        Page {historyPagination.currentPage} of{" "}
+                        {Math.max(historyPagination.totalPages, 1)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPage((value) => value + 1)}
+                        disabled={
+                          historyLoading ||
+                          historyPagination.currentPage >=
+                            historyPagination.totalPages
+                        }
+                        aria-label="Next page"
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}
-
-        <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
-          <div className="rounded-xl bg-blue-50 p-2 text-[#123A8F]">
-            <Info size={18} />
-          </div>
-          <div className="text-sm leading-5 text-slate-600">
-            <p className="font-bold text-[#071A52]">Attendance integration status</p>
-            <p className="mt-1">
-              Today’s assigned class, attendance register, and roster load from
-              the attendance API. You can create, save, and submit today’s
-              register here. The history tab still uses sample records until
-              its API is available.
-            </p>
-          </div>
-        </div>
       </div>
 
-      <HistoryModal
-        record={selectedHistory}
-        onClose={() => setSelectedHistory(null)}
-        onContinueDraft={handleContinueDraft}
-        onEditAttendance={handleEditAttendance}
+      <RegisterModal
+        state={registerModal}
+        classLabel={historyClassLabel}
+        onClose={closeRegisterModal}
+        onRetry={() => {
+          const register = historyRegisters.find(
+            (item) => item.id === registerModal?.registerId
+          );
+          if (register) openRegisterModal(register);
+          else closeRegisterModal();
+        }}
+        onToggleStudent={toggleModalStudent}
+        onSave={saveRegisterCorrections}
       />
 
       <IncompleteSubmissionModal

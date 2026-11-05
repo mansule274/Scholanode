@@ -49,6 +49,7 @@ import FormMasterAttendance from './private/pages/attendance/FormMasterAttendanc
 import GateAccess from './private/pages/attendance/GateAccess';
 import VerifyStudent from './private/pages/attendance/VerifyStudent';
 import ScanHistoryPage from './private/pages/attendance/ScanHistoryPage';
+import AttendanceHistoryPage from './private/pages/attendance/AttendanceHistoryPage';
 import SchoolProfile from './private/pages/school-profile/SchoolProfile';
 import ReferAndEarn from './private/pages/referal/ReferAndEarn';
 
@@ -156,6 +157,7 @@ function PrivateRoutes() {
 
       {/* Attendance & security */}
       <Route path="/attendance" element={<PrivateAppShell pageTitle="Form Master Attendance"><FormMasterAttendance /></PrivateAppShell>} />
+      <Route path="/attendance-history" element={<RequireAdministrator><PrivateAppShell pageTitle="Attendance History"><AttendanceHistoryPage /></PrivateAppShell></RequireAdministrator>} />
       <Route path="/gate-access" element={<RequireAdministrator><PrivateAppShell pageTitle="Gate Access"><GateAccess /></PrivateAppShell></RequireAdministrator>} />
       <Route path="/verify-student" element={<RequireScannerAccess><PrivateAppShell pageTitle="Verify Student"><VerifyStudent /></PrivateAppShell></RequireScannerAccess>} />
       <Route path="/scan-history" element={<RequireScannerAccess allowAdministrators><PrivateAppShell pageTitle="Gate Scan History"><ScanHistoryPage /></PrivateAppShell></RequireScannerAccess>} />

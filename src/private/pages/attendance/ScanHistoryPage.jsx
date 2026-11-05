@@ -600,7 +600,7 @@ export default function ScanHistoryPage() {
             Gate operations · {schoolName}
           </div>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071A52] sm:text-3xl">
-            Scan History
+            Gate Scan History
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Every student recorded at the gate, newest first.

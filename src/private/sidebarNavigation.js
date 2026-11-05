@@ -117,8 +117,9 @@ const navigation = [
     items: [
       { label: 'Gate Access', icon: ShieldCheck, path: '/gate-access', allowedRoles: administratorRoles },
       { label: 'Verify Student', icon: ShieldCheck, path: '/verify-student', requiresScanAccess: true },
-      { label: 'Scan History', icon: History, path: '/scan-history', requiresScanAccess: true, allowedRoles: administratorRoles },
+      { label: 'Gate Scan History', icon: History, path: '/scan-history', requiresScanAccess: true, allowedRoles: administratorRoles },
       { label: 'Attendance', icon: ShieldCheck, path: '/attendance', requiresFormMaster: true },
+      { label: 'Attendance History', icon: History, path: '/attendance-history', allowedRoles: administratorRoles },
       { label: 'Messages', icon: MessageSquareText, path: '/messages', allowedRoles: administratorRoles },
     ],
   },
