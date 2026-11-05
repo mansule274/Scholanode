@@ -30,6 +30,12 @@ import {
   submitAttendance as submitAttendanceRequest,
 } from "./attendanceApi";
 import { useUserContext } from "../../../context/UserContext";
+import ProfilePendingBadge from "../../components/ProfilePendingBadge";
+import {
+  PENDING_PROFILE_HINT,
+  getStaffDisplayName,
+  isProfilePending,
+} from "../../../utils/staffDisplay";
 
 const getLocalToday = () => {
   const date = new Date();
@@ -484,13 +490,21 @@ const getClassLabel = (assignedClass) => {
   return label || "Assigned class";
 };
 
-const getFormMasterName = (formMaster) =>
-  [formMaster?.firstName, formMaster?.surName]
-    .filter(Boolean)
-    .join(" ") ||
-  formMaster?.fullName ||
-  formMaster?.name ||
-  "";
+// A form master who has not signed in yet arrives with no real name, so the
+// chip falls back to their invitation email and finally to the shared pending
+// label rather than disappearing from the workspace header.
+const getFormMasterName = (formMaster) => {
+  if (isProfilePending(formMaster)) return getStaffDisplayName(formMaster);
+
+  return (
+    [formMaster?.firstName, formMaster?.surName]
+      .filter(Boolean)
+      .join(" ") ||
+    formMaster?.fullName ||
+    formMaster?.name ||
+    ""
+  );
+};
 
 const formatDate = (date) => {
   if (!date) return "—";
@@ -1883,9 +1897,19 @@ export default function FormMasterAttendance() {
                     </p>
                     {getFormMasterName(todayAttendance?.formMaster) ? (
                       <>
-                        <p className="mt-1 text-xs text-blue-100">
-                          Form Master · {getFormMasterName(todayAttendance.formMaster)}
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-blue-100">
+                          <span>
+                            Form Master · {getFormMasterName(todayAttendance.formMaster)}
+                          </span>
+                          {isProfilePending(todayAttendance.formMaster) && (
+                            <ProfilePendingBadge />
+                          )}
                         </p>
+                        {isProfilePending(todayAttendance.formMaster) && (
+                          <p className="mt-1 text-xs text-cyan-200">
+                            {PENDING_PROFILE_HINT}
+                          </p>
+                        )}
                         {todayAttendance.formMaster.loginId && (
                           <p className="mt-1 text-xs font-semibold text-cyan-200">
                             Login ID · {todayAttendance.formMaster.loginId}

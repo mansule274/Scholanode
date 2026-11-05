@@ -1,4 +1,5 @@
 import { getRoleLabel } from '../../../utils/roles';
+import { getStaffDisplayName, isProfilePending } from '../../../utils/staffDisplay';
 
 export const COMPLAINT_CATEGORIES = [
   { value: 'ACADEMIC', label: 'Academic' },
@@ -75,6 +76,10 @@ export function formatComplaintDate(value) {
 
 export function getSenderName(sender) {
   if (!sender) return '';
+
+  // Senders can also be students or parents, so only a genuinely pending staff
+  // account is relabelled; every other sender keeps the name as sent.
+  if (isProfilePending(sender)) return getStaffDisplayName(sender);
 
   return [sender.firstName, sender.surName].filter(Boolean).join(' ').trim();
 }

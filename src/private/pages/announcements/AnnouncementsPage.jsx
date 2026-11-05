@@ -32,6 +32,8 @@ import {
   getCreatorName,
   getCreatorRoleLabel,
 } from './announcementDisplay';
+import ProfilePendingBadge from '../../components/ProfilePendingBadge';
+import { isProfilePending } from '../../../utils/staffDisplay';
 
 const PAGE_SIZE = 10;
 const MANAGEMENT_ROLES = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR];
@@ -477,6 +479,7 @@ export default function AnnouncementsPage() {
 function AnnouncementItem({ announcement, showCreator, onDelete }) {
   const creatorName = getCreatorName(announcement.creator);
   const creatorRole = getCreatorRoleLabel(announcement.creator);
+  const creatorPending = isProfilePending(announcement.creator);
 
   return (
     <article className="p-5 sm:p-6">
@@ -518,6 +521,7 @@ function AnnouncementItem({ announcement, showCreator, onDelete }) {
           <UserRound size={14} />
           {creatorName || 'School office'}
           {creatorRole && <span>· {creatorRole}</span>}
+          {creatorPending && <ProfilePendingBadge />}
         </p>
       )}
     </article>

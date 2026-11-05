@@ -17,6 +17,12 @@ import {
 } from "lucide-react";
 import { useUserContext } from "../../../context/UserContext";
 import { getScanHistory } from "./gateScannerApi";
+import ProfilePendingBadge from "../../components/ProfilePendingBadge";
+import {
+  PENDING_PROFILE_HINT,
+  getStaffDisplayName,
+  isProfilePending,
+} from "../../../utils/staffDisplay";
 
 // The API groups scans by the school's day, not the browser's day.
 const SCHOOL_TIME_ZONE = "Africa/Lagos";
@@ -85,12 +91,13 @@ function getClassName(record) {
   return name || "No class";
 }
 
+// Invited staff are created with placeholder names until they sign in, so an
+// officer is identified by their invitation email while the profile is pending.
+// "Gate security" stays only for records that carry no officer at all.
 function getOfficerName(record) {
-  const names = [record?.scannedBy?.firstName, record?.scannedBy?.surName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return names || "Gate security";
+  const officer = record?.scannedBy;
+  if (!officer) return "Gate security";
+  return getStaffDisplayName(officer) || "Gate security";
 }
 
 function getScanType(record) {
@@ -218,9 +225,17 @@ function ScanDetailsModal({ record, onClose }) {
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Recorded by
             </p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-800">
-              {getOfficerName(record)}
-            </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-slate-800">
+                {getOfficerName(record)}
+              </p>
+              {isProfilePending(record?.scannedBy) && <ProfilePendingBadge />}
+            </div>
+            {isProfilePending(record?.scannedBy) && (
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                {PENDING_PROFILE_HINT}
+              </p>
+            )}
             <p className="text-[11px] capitalize text-slate-500">
               {String(record?.scannedBy?.role || "Gate security")
                 .toLowerCase()
@@ -453,6 +468,7 @@ export default function ScanHistoryPage() {
         "Class",
         "Scan Type",
         "Recorded By",
+        "Profile Pending",
       ];
 
       const rows = collected.map((record) => [
@@ -463,6 +479,9 @@ export default function ScanHistoryPage() {
         getClassName(record),
         getScanType(record) === "RETURN" ? "Return" : "Arrival",
         getOfficerName(record),
+        // Same convention as the staff directory export: the placeholder name
+        // never reaches the file, and the pending state is flagged explicitly.
+        record?.scannedBy ? (isProfilePending(record.scannedBy) ? "YES" : "NO") : "",
       ]);
 
       const csv = [header, ...rows]

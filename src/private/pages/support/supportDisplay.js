@@ -1,3 +1,5 @@
+import { getStaffDisplayName, isProfilePending } from '../../../utils/staffDisplay';
+
 export const SUPPORT_CATEGORIES = [
   { value: 'TECHNICAL_ISSUE', label: 'Technical issue' },
   { value: 'ACCOUNT_AND_ACCESS', label: 'Account & access' },
@@ -145,6 +147,10 @@ export function isSameSupportDay(first, second) {
 
 export function getSenderName(sender) {
   if (!sender || typeof sender !== 'object') return '';
+
+  // Senders can also be students or parents, so only a genuinely pending staff
+  // account is relabelled; every other sender keeps the name the backend sends.
+  if (isProfilePending(sender)) return getStaffDisplayName(sender);
 
   if (typeof sender.name === 'string' && sender.name.trim()) {
     return sender.name.trim();

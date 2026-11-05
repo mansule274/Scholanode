@@ -1,4 +1,5 @@
 import { getRoleLabel } from '../../../utils/roles';
+import { getStaffDisplayName, isProfilePending } from '../../../utils/staffDisplay';
 
 export const AUDIENCE_OPTIONS = [
   { value: 'STAFF', label: 'Staff' },
@@ -64,6 +65,11 @@ export function formatAnnouncementDate(value) {
 
 export function getCreatorName(creator) {
   if (!creator) return '';
+
+  // Creators can be students, parents or leaders as well as staff, so only an
+  // account that is genuinely pending is relabelled — everyone else keeps the
+  // name the backend already sends.
+  if (isProfilePending(creator)) return getStaffDisplayName(creator);
 
   return [creator.firstName, creator.surName].filter(Boolean).join(' ').trim();
 }

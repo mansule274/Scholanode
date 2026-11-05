@@ -37,6 +37,8 @@ import {
   getStatusLabel,
   getStatusStyle,
 } from './complaintDisplay';
+import ProfilePendingBadge from '../../components/ProfilePendingBadge';
+import { isProfilePending } from '../../../utils/staffDisplay';
 
 const PAGE_SIZE = 10;
 const COMPLAINT_MANAGERS = [ROLES.LEADER, ROLES.VICE_LEADER, ROLES.ADMINISTRATOR];
@@ -702,6 +704,7 @@ function SummaryCard({ card, value, active, loading, onClick }) {
 function ComplaintCard({ complaint, showSender, onOpen }) {
   const senderName = complaint.isAnonymous ? 'Anonymous' : getSenderName(complaint.sender);
   const senderRole = complaint.isAnonymous ? '' : getSenderRoleLabel(complaint.sender);
+  const senderPending = !complaint.isAnonymous && isProfilePending(complaint.sender);
 
   return (
     <article className="p-5 sm:p-6">
@@ -724,10 +727,11 @@ function ComplaintCard({ complaint, showSender, onOpen }) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         {showSender ? (
-          <p className="flex items-center gap-1.5 text-[13px] text-slate-400">
+          <p className="flex flex-wrap items-center gap-1.5 text-[13px] text-slate-400">
             <UserRound size={14} />
             {senderName || 'Former user'}
             {senderRole && <span>· {senderRole}</span>}
+            {senderPending && <ProfilePendingBadge />}
           </p>
         ) : (
           <span />
@@ -998,6 +1002,7 @@ function ComplaintDetailsModal({
   const senderName = complaint.isAnonymous ? 'Anonymous' : getSenderName(complaint.sender);
   const senderRole =
     complaint.isAnonymous || !complaint.sender ? '' : getSenderRoleLabel(complaint.sender);
+  const senderPending = !complaint.isAnonymous && isProfilePending(complaint.sender);
 
   return (
     <div
@@ -1059,12 +1064,13 @@ function ComplaintDetailsModal({
           </div>
 
           <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-            <p className="text-[13px] text-slate-500">
-              Submitted by{' '}
+            <p className="flex flex-wrap items-center gap-1.5 text-[13px] text-slate-500">
+              <span>Submitted by</span>
               <span className="font-semibold text-slate-700">
                 {senderName || 'Former user'}
                 {senderRole ? ` · ${senderRole}` : ''}
               </span>
+              {senderPending && <ProfilePendingBadge />}
             </p>
             <p className="text-[13px] text-slate-500">
               Submitted {formatComplaintDate(complaint.createdAt)}
