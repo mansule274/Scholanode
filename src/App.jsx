@@ -23,6 +23,7 @@ import PaymentPage from './public/pages/payment/PaymentPage';
 import PaymentSuccessPage from './public/pages/payment/PaymentSuccessPage';
 
 import PrivateAppShell from './private/PrivateAppShell';
+import FirstLoginGate from './private/firstLogin/FirstLoginGate';
 import RequireAdministrator from './private/RequireAdministrator';
 import Dashboard from './private/pages/dashboard/Dashboard';
 import MyClassPage from './private/pages/dashboard/MyClassPage';
@@ -212,9 +213,11 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-slate-50 text-slate-800">
         {isAuthenticated ? (
-          <NotificationProvider>
-            <PrivateRoutes />
-          </NotificationProvider>
+          <FirstLoginGate>
+            <NotificationProvider>
+              <PrivateRoutes />
+            </NotificationProvider>
+          </FirstLoginGate>
         ) : (
           <PublicRoutes />
         )}
